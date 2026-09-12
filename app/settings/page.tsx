@@ -1,649 +1,311 @@
 "use client";
 
-import { useState } from "react";
-
-type Theme = "dark" | "light" | "system";
-type TimerMode = "stopwatch" | "countdown" | "pomodoro";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 export default function SettingsPage() {
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [timerMode, setTimerMode] =
-    useState<TimerMode>("pomodoro");
+  const supabase = createClient();
 
-  const [dailyGoal, setDailyGoal] = useState(6);
-  const [weekStart, setWeekStart] = useState("شنبه");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [autoStartBreak, setAutoStartBreak] =
-    useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [notifications, setNotifications] = useState(true);
 
-  const [sound, setSound] = useState(true);
-  const [vibration, setVibration] = useState(true);
-  const [focusMode, setFocusMode] = useState(false);
+  useEffect(() => {
+    async function loadProfile() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-  const [rememberSession, setRememberSession] =
-    useState(true);
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
 
-  const [showSeconds, setShowSeconds] = useState(true);
+      setEmail(user.email ?? "");
 
-  const [saved, setSaved] = useState(false);
+      const metadata = user.user_metadata;
 
-  function saveSettings() {
-    setSaved(true);
+      setName(metadata?.full_name ?? "");
+      setLoading(false);
+    }
 
-    setTimeout(() => {
-      setSaved(false);
-    }, 2000);
+    loadProfile();
+  }, []);
+
+  async function saveProfile() {
+    setError("");
+    setMessage("");
+    setSaving(true);
+
+    try {
+      const { error: updateError } =
+        await supabase.auth.updateUser({
+          data: {
+            full_name: name.trim(),
+          },
+        });
+
+      if (updateError) {
+        setError(
+          "ذخیره اطلاعات انجام نشد. دوباره تلاش کن."
+        );
+        return;
+      }
+
+      setMessage("اطلاعات حساب با موفقیت ذخیره شد.");
+    } catch {
+      setError(
+        "خطایی در ارتباط با سرور رخ داد."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function toggle(
-    setter: React.Dispatch<React.SetStateAction<boolean>>
-  ) {
-    setter((current) => !current);
+  async function logout() {
+    await supabase.auth.signOut();
+
+    window.location.href = "/login";
+  }
+
+  if (loading) {
+    return (
+      <main className="app-page">
+        <div className="loading-state">
+          <span className="auth-spinner" />
+          <p>در حال بارگذاری تنظیمات...</p>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main className="settings-page">
-      <header className="settings-header">
+    <main className="app-page">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">
+          <span className="page-eyebrow">
             SETTINGS
           </span>
 
           <h1>تنظیمات</h1>
 
           <p>
-            شخصی‌سازی Study Manager متناسب با روش مطالعه
-            تو
+            حساب کاربری و تنظیمات Study Manager را
+            مدیریت کن.
           </p>
         </div>
+      </div>
 
-        <button
-          className="settings-save-button"
-          onClick={saveSettings}
-        >
-          {saved ? "✓ ذخیره شد" : "ذخیره تنظیمات"}
-        </button>
-      </header>
+      <div className="settings-grid">
+        <section className="dashboard-card">
+          <div className="card-header">
+            <div>
+              <h2>حساب کاربری</h2>
 
-      <section className="settings-layout">
-        <div className="settings-main">
-          {/* Account */}
-          <section className="panel settings-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">
-                👤
-              </div>
-
-              <div>
-                <h2>حساب کاربری</h2>
-
-                <p>
-                  اطلاعات حساب و مشخصات کاربری
-                </p>
-              </div>
+              <p>
+                اطلاعات پایه حساب خودت را مدیریت کن.
+              </p>
             </div>
+          </div>
 
-            <div className="settings-form-grid">
-              <div className="settings-field">
-                <label>نام نمایشی</label>
-
-                <input
-                  defaultValue="دانش‌آموز"
-                  placeholder="نام نمایشی"
-                />
-              </div>
-
-              <div className="settings-field">
-                <label>ایمیل</label>
-
-                <input
-                  type="email"
-                  defaultValue="example@email.com"
-                  placeholder="ایمیل"
-                />
-              </div>
-            </div>
-
-            <div className="settings-account-actions">
-              <button>تغییر ایمیل</button>
-
-              <button className="secondary">
-                تغییر رمز عبور
-              </button>
-            </div>
-          </section>
-
-          {/* Appearance */}
-          <section className="panel settings-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">
-                ◐
-              </div>
-
-              <div>
-                <h2>ظاهر برنامه</h2>
-
-                <p>
-                  نحوه نمایش برنامه را انتخاب کن.
-                </p>
-              </div>
-            </div>
-
-            <div className="theme-options">
-              <button
-                className={
-                  theme === "dark" ? "active" : ""
-                }
-                onClick={() => setTheme("dark")}
-              >
-                <span className="theme-preview dark">
-                  ◐
-                </span>
-
-                <div>
-                  <strong>تیره</strong>
-
-                  <small>
-                    مناسب مطالعه در محیط کم‌نور
-                  </small>
-                </div>
-              </button>
-
-              <button
-                className={
-                  theme === "light" ? "active" : ""
-                }
-                onClick={() => setTheme("light")}
-              >
-                <span className="theme-preview light">
-                  ☀
-                </span>
-
-                <div>
-                  <strong>روشن</strong>
-
-                  <small>
-                    ظاهر روشن و ساده
-                  </small>
-                </div>
-              </button>
-
-              <button
-                className={
-                  theme === "system" ? "active" : ""
-                }
-                onClick={() => setTheme("system")}
-              >
-                <span className="theme-preview system">
-                  ⚙
-                </span>
-
-                <div>
-                  <strong>سیستم</strong>
-
-                  <small>
-                    هماهنگ با تنظیمات دستگاه
-                  </small>
-                </div>
-              </button>
-            </div>
-          </section>
-
-          {/* Study */}
-          <section className="panel settings-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">
-                📚
-              </div>
-
-              <div>
-                <h2>مطالعه</h2>
-
-                <p>
-                  تنظیمات مربوط به برنامه و هدف مطالعه
-                </p>
-              </div>
-            </div>
-
-            <div className="settings-form-grid">
-              <div className="settings-field">
-                <label>
-                  هدف مطالعه روزانه
-                </label>
-
-                <div className="input-with-unit">
-                  <input
-                    type="number"
-                    min={0}
-                    max={24}
-                    value={dailyGoal}
-                    onChange={(event) =>
-                      setDailyGoal(
-                        Number(event.target.value)
-                      )
-                    }
-                  />
-
-                  <span>ساعت</span>
-                </div>
-              </div>
-
-              <div className="settings-field">
-                <label>
-                  شروع هفته
-                </label>
-
-                <select
-                  value={weekStart}
-                  onChange={(event) =>
-                    setWeekStart(event.target.value)
-                  }
-                >
-                  <option value="شنبه">شنبه</option>
-                  <option value="یکشنبه">
-                    یکشنبه
-                  </option>
-                  <option value="دوشنبه">
-                    دوشنبه
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <div className="settings-toggle-list">
-              <div className="settings-toggle-row">
-                <div>
-                  <strong>
-                    ثبت خودکار جلسه مطالعه
-                  </strong>
-
-                  <p>
-                    اطلاعات جلسه پس از پایان تایمر
-                    به‌صورت خودکار ثبت شود.
-                  </p>
-                </div>
-
-                <button
-                  className={`settings-switch ${
-                    rememberSession ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    toggle(setRememberSession)
-                  }
-                >
-                  <span />
-                </button>
-              </div>
-
-              <div className="settings-toggle-row">
-                <div>
-                  <strong>
-                    نمایش ثانیه در تایمر
-                  </strong>
-
-                  <p>
-                    ثانیه‌ها در نمایشگر تایمر نشان داده
-                    شوند.
-                  </p>
-                </div>
-
-                <button
-                  className={`settings-switch ${
-                    showSeconds ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    toggle(setShowSeconds)
-                  }
-                >
-                  <span />
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* Timer */}
-          <section className="panel settings-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">
-                ⏱
-              </div>
-
-              <div>
-                <h2>تایمر</h2>
-
-                <p>
-                  تنظیمات پیش‌فرض جلسات مطالعه
-                </p>
-              </div>
-            </div>
-
-            <div className="settings-field">
-              <label>
-                حالت پیش‌فرض تایمر
+          <div className="settings-form">
+            <div className="auth-field">
+              <label htmlFor="settings-name">
+                نام
               </label>
 
-              <div className="timer-mode-options">
-                <button
-                  className={
-                    timerMode === "stopwatch"
-                      ? "active"
-                      : ""
-                  }
-                  onClick={() =>
-                    setTimerMode("stopwatch")
-                  }
-                >
-                  <strong>کرنومتر</strong>
-
-                  <small>
-                    بدون زمان پایان مشخص
-                  </small>
-                </button>
-
-                <button
-                  className={
-                    timerMode === "countdown"
-                      ? "active"
-                      : ""
-                  }
-                  onClick={() =>
-                    setTimerMode("countdown")
-                  }
-                >
-                  <strong>شمارش معکوس</strong>
-
-                  <small>
-                    تا رسیدن به هدف زمانی
-                  </small>
-                </button>
-
-                <button
-                  className={
-                    timerMode === "pomodoro"
-                      ? "active"
-                      : ""
-                  }
-                  onClick={() =>
-                    setTimerMode("pomodoro")
-                  }
-                >
-                  <strong>پومودورو</strong>
-
-                  <small>
-                    مطالعه و استراحت دوره‌ای
-                  </small>
-                </button>
-              </div>
+              <input
+                id="settings-name"
+                type="text"
+                value={name}
+                onChange={(event) =>
+                  setName(event.target.value)
+                }
+                placeholder="نام خود را وارد کن"
+              />
             </div>
 
-            <div className="settings-toggle-list">
-              <div className="settings-toggle-row">
-                <div>
-                  <strong>
-                    شروع خودکار استراحت
-                  </strong>
+            <div className="auth-field">
+              <label htmlFor="settings-email">
+                ایمیل
+              </label>
 
-                  <p>
-                    بعد از پایان زمان مطالعه، استراحت
-                    به‌صورت خودکار آغاز شود.
-                  </p>
-                </div>
-
-                <button
-                  className={`settings-switch ${
-                    autoStartBreak ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    toggle(setAutoStartBreak)
-                  }
-                >
-                  <span />
-                </button>
-              </div>
-
-              <div className="settings-toggle-row">
-                <div>
-                  <strong>
-                    صدای پایان تایمر
-                  </strong>
-
-                  <p>
-                    هنگام پایان جلسه صدای اعلان پخش شود.
-                  </p>
-                </div>
-
-                <button
-                  className={`settings-switch ${
-                    sound ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    toggle(setSound)
-                  }
-                >
-                  <span />
-                </button>
-              </div>
-
-              <div className="settings-toggle-row">
-                <div>
-                  <strong>
-                    لرزش دستگاه
-                  </strong>
-
-                  <p>
-                    در دستگاه‌های پشتیبانی‌شده هنگام
-                    پایان تایمر لرزش فعال شود.
-                  </p>
-                </div>
-
-                <button
-                  className={`settings-switch ${
-                    vibration ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    toggle(setVibration)
-                  }
-                >
-                  <span />
-                </button>
-              </div>
-
-              <div className="settings-toggle-row">
-                <div>
-                  <strong>
-                    حالت تمرکز
-                  </strong>
-
-                  <p>
-                    هنگام مطالعه عناصر غیرضروری رابط
-                    کاربری کمتر نمایش داده شوند.
-                  </p>
-                </div>
-
-                <button
-                  className={`settings-switch ${
-                    focusMode ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    toggle(setFocusMode)
-                  }
-                >
-                  <span />
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* Calendar */}
-          <section className="panel settings-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">
-                🗓
-              </div>
-
-              <div>
-                <h2>تقویم</h2>
-
-                <p>
-                  تنظیمات نمایش تقویم و زمان‌بندی
-                </p>
-              </div>
+              <input
+                id="settings-email"
+                type="email"
+                dir="ltr"
+                value={email}
+                disabled
+              />
             </div>
 
-            <div className="settings-info-grid">
-              <div>
-                <span>تقویم</span>
-
-                <strong>
-                  هجری شمسی
-                </strong>
-
-                <small>
-                  تقویم اصلی برنامه
-                </small>
+            {message && (
+              <div className="settings-message">
+                {message}
               </div>
+            )}
 
-              <div>
-                <span>ساعت</span>
-
-                <strong>
-                  ۲۴ ساعته
-                </strong>
-
-                <small>
-                  نمایش زمان
-                </small>
+            {error && (
+              <div className="auth-error">
+                <span>!</span>
+                <p>{error}</p>
               </div>
+            )}
 
-              <div>
-                <span>زبان</span>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={saveProfile}
+              disabled={saving}
+            >
+              {saving
+                ? "در حال ذخیره..."
+                : "ذخیره تغییرات"}
+            </button>
+          </div>
+        </section>
 
-                <strong>
-                  فارسی
-                </strong>
-
-                <small>
-                  رابط کاربری
-                </small>
-              </div>
-            </div>
-          </section>
-
-          {/* Security */}
-          <section className="panel settings-section security-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">
-                🔒
-              </div>
-
-              <div>
-                <h2>امنیت</h2>
-
-                <p>
-                  مدیریت دسترسی و حساب کاربری
-                </p>
-              </div>
-            </div>
-
-            <div className="security-actions">
-              <button>
-                تغییر رمز عبور
-              </button>
-
-              <button>
-                خروج از همه دستگاه‌ها
-              </button>
-
-              <button className="danger">
-                حذف حساب و اطلاعات
-              </button>
-            </div>
-
-            <div className="security-warning">
-              <span>⚠</span>
+        <section className="dashboard-card">
+          <div className="card-header">
+            <div>
+              <h2>ظاهر برنامه</h2>
 
               <p>
-                حذف حساب یک عملیات حساس است. در نسخه
-                متصل به سرور، قبل از حذف نهایی تأیید
-                مجدد دریافت خواهد شد.
+                ظاهر و تجربه کاربری را تنظیم کن.
               </p>
             </div>
-          </section>
-        </div>
+          </div>
 
-        <aside className="settings-sidebar">
-          <div className="panel settings-summary">
-            <div className="settings-summary-icon">
-              ⚙
+          <div className="settings-options">
+            <div className="settings-option">
+              <div>
+                <strong>
+                  حالت تاریک
+                </strong>
+
+                <span>
+                  استفاده از رابط کاربری تاریک
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  darkMode
+                    ? "toggle active"
+                    : "toggle"
+                }
+                onClick={() =>
+                  setDarkMode(
+                    (current) => !current
+                  )
+                }
+                aria-label="تغییر حالت تاریک"
+              >
+                <span />
+              </button>
             </div>
 
-            <h2>تنظیمات فعلی</h2>
+            <div className="settings-option">
+              <div>
+                <strong>
+                  اعلان‌ها
+                </strong>
+
+                <span>
+                  فعال‌سازی اعلان‌های Study Manager
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className={
+                  notifications
+                    ? "toggle active"
+                    : "toggle"
+                }
+                onClick={() =>
+                  setNotifications(
+                    (current) => !current
+                  )
+                }
+                aria-label="تغییر اعلان‌ها"
+              >
+                <span />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="dashboard-card">
+          <div className="card-header">
+            <div>
+              <h2>امنیت حساب</h2>
+
+              <p>
+                گزینه‌های امنیتی حساب کاربری.
+              </p>
+            </div>
+          </div>
+
+          <div className="settings-actions">
+            <Link
+              href="/forgot-password"
+              className="secondary-button"
+            >
+              تغییر / بازیابی رمز عبور
+            </Link>
+
+            <button
+              type="button"
+              className="danger-button"
+              onClick={logout}
+            >
+              خروج از حساب
+            </button>
+          </div>
+        </section>
+
+        <section className="dashboard-card danger-card">
+          <div className="card-header">
+            <div>
+              <h2>منطقه خطر</h2>
+
+              <p>
+                عملیات حساس مربوط به حساب در این بخش
+                قرار می‌گیرد.
+              </p>
+            </div>
+          </div>
+
+          <div className="danger-warning">
+            <strong>
+              حذف حساب
+            </strong>
 
             <p>
-              خلاصه‌ای از تنظیمات فعلی برنامه
+              حذف حساب و اطلاعات یک عملیات دائمی است.
+              این قابلیت بعداً با تأیید چندمرحله‌ای
+              پیاده‌سازی خواهد شد.
             </p>
 
-            <div className="settings-summary-list">
-              <div>
-                <span>ظاهر</span>
-
-                <strong>
-                  {theme === "dark"
-                    ? "تیره"
-                    : theme === "light"
-                    ? "روشن"
-                    : "سیستم"}
-                </strong>
-              </div>
-
-              <div>
-                <span>هدف روزانه</span>
-
-                <strong>
-                  {dailyGoal} ساعت
-                </strong>
-              </div>
-
-              <div>
-                <span>تایمر</span>
-
-                <strong>
-                  {timerMode === "pomodoro"
-                    ? "پومودورو"
-                    : timerMode === "countdown"
-                    ? "شمارش معکوس"
-                    : "کرنومتر"}
-                </strong>
-              </div>
-
-              <div>
-                <span>تقویم</span>
-
-                <strong>
-                  شمسی
-                </strong>
-              </div>
-            </div>
+            <button
+              type="button"
+              className="danger-button"
+              disabled
+            >
+              حذف حساب
+            </button>
           </div>
-
-          <div className="panel settings-help">
-            <span>💡</span>
-
-            <div>
-              <strong>
-                توجه
-              </strong>
-
-              <p>
-                در حال حاضر این تنظیمات در حافظه موقت
-                صفحه نگهداری می‌شوند. پس از اتصال
-                Supabase، تنظیمات به‌صورت دائمی برای
-                حساب کاربری ذخیره خواهند شد.
-              </p>
-            </div>
-          </div>
-        </aside>
-      </section>
+        </section>
+      </div>
     </main>
   );
-}
+          }
