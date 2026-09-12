@@ -1,163 +1,305 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  BarChart3,
+  Clock3,
+  FileText,
+  TrendingUp,
+  BookOpen,
+  Target,
+  CalendarDays,
+} from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
-type Period = "week" | "month" | "custom";
-
-type SubjectData = {
-  subject: string;
-  minutes: number;
-  tests: number;
-  percentage: number;
-  mastery: number;
+type Subject = {
+  id: string;
+  name: string;
 };
 
-const weeklyStudy = [
-  { day: "شنبه", minutes: 310 },
-  { day: "یکشنبه", minutes: 390 },
-  { day: "دوشنبه", minutes: 280 },
-  { day: "سه‌شنبه", minutes: 420 },
-  { day: "چهارشنبه", minutes: 350 },
-  { day: "پنجشنبه", minutes: 270 },
-  { day: "جمعه", minutes: 180 },
-];
+type StudySession = {
+  id: string;
+  subject_id: string | null;
+  duration_minutes: number;
+  started_at: string;
+};
 
-const subjects: SubjectData[] = [
-  {
-    subject: "زیست‌شناسی",
-    minutes: 620,
-    tests: 85,
-    percentage: 78,
-    mastery: 82,
-  },
-  {
-    subject: "شیمی",
-    minutes: 510,
-    tests: 70,
-    percentage: 72,
-    mastery: 76,
-  },
-  {
-    subject: "ریاضی",
-    minutes: 430,
-    tests: 55,
-    percentage: 68,
-    mastery: 70,
-  },
-  {
-    subject: "فیزیک",
-    minutes: 360,
-    tests: 42,
-    percentage: 74,
-    mastery: 73,
-  },
-  {
-    subject: "زبان",
-    minutes: 190,
-    tests: 30,
-    percentage: 81,
-    mastery: 79,
-  },
-];
+type Test = {
+  id: string;
+  subject_id: string | null;
+  percentage: number | null;
+  score: number | null;
+  max_score: number | null;
+  test_date: string;
+};
 
-const topicData = [
-  {
-    topic: "تنظیم عصبی",
-    subject: "زیست‌شناسی",
-    mastery: 88,
-    tests: 32,
-    percentage: 84,
-  },
-  {
-    topic: "ساختار اتم",
-    subject: "شیمی",
-    mastery: 72,
-    tests: 25,
-    percentage: 69,
-  },
-  {
-    topic: "تابع",
-    subject: "ریاضی",
-    mastery: 64,
-    tests: 30,
-    percentage: 61,
-  },
-  {
-    topic: "الکتریسیته",
-    subject: "فیزیک",
-    mastery: 78,
-    tests: 20,
-    percentage: 76,
-  },
-  {
-    topic: "لغات",
-    subject: "زبان",
-    mastery: 91,
-    tests: 18,
-    percentage: 89,
-  },
-];
+type ChartItem = {
+  name: string;
+  minutes: number;
+};
 
 export default function AnalyticsPage() {
-  const [period, setPeriod] = useState<Period>("week");
-  const [subjectFilter, setSubjectFilter] =
-    useState("همه");
+  const supabase = createClient();
 
-  const totalMinutes = subjects.reduce(
-    (sum, subject) => sum + subject.minutes,
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [sessions, setSessions] = useState<StudySession[]>([]);
+  const [tests, setTests] = useState<Test[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [period, setPeriod] = useState<
+    "7" | "30" | "all"
+  >("7");
+
+  async function loadData() {
+    setLoading(true);
+
+    const [subjectsResult, sessionsResult, testsResult] =
+      await Promise.all([
+        supabase
+          .from("subjects")
+          .select("id,name")
+          .order("name"),
+
+        supabase
+          .from("study_sessions")
+          .select(
+            "id,subject_id,duration_minutes,started_at"
+          )
+          .order("started_at", {
+            ascending: true,
+          }),
+
+        supabase
+          .from("tests")
+          .select(
+            "id,subject_id,percentage,score,max_score,test_date"
+          )
+          .order("test_date", {
+            ascending: true,
+          }),
+      ]);
+
+    if (subjectsResult.data) {
+      setSubjects(subjectsResult.data);
+    }
+
+    if (sessionsResult.data) {
+      setSessions(sessionsResult.data);
+    }
+
+    if (testsResult.data) {
+      setTests(testsResult.data);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  function getPercentage(test: Test) {
+    if (test.percentage !== null) {
+      return Number(test.percentage);
+    }
+
+    if (
+      test.score !== null &&
+      test.max_score !== null &&
+      test.max_score > 0
+    ) {
+      return (
+        (Number(test.score) /
+          Number(test.max_score)) *
+        100
+      );
+    }
+
+    return null;
+  }
+
+  const filteredSessions = useMemo(() => {
+    if (period === "all") return sessions;
+
+    const days = Number(period);
+
+    const limit = new Date();
+    limit.setHours(0, 0, 0, 0);
+    limit.setDate(limit.getDate() - days + 1);
+
+    return sessions.filter(
+      (session) =>
+        new Date(session.started_at) >= limit
+    );
+  }, [sessions, period]);
+
+  const filteredTests = useMemo(() => {
+    if (period === "all") return tests;
+
+    const days = Number(period);
+
+    const limit = new Date();
+    limit.setHours(0, 0, 0, 0);
+    limit.setDate(limit.getDate() - days + 1);
+
+    return tests.filter(
+      (test) => new Date(test.test_date) >= limit
+    );
+  }, [tests, period]);
+
+  const totalMinutes = filteredSessions.reduce(
+    (sum, session) =>
+      sum + Number(session.duration_minutes || 0),
     0
   );
 
-  const totalTests = subjects.reduce(
-    (sum, subject) => sum + subject.tests,
-    0
-  );
+  const totalHours = totalMinutes / 60;
 
-  const averagePercentage = Math.round(
-    subjects.reduce(
-      (sum, subject) => sum + subject.percentage,
-      0
-    ) / subjects.length
-  );
+  const averageDailyHours = useMemo(() => {
+    if (period === "all") {
+      const dates = new Set(
+        filteredSessions.map((session) =>
+          new Date(
+            session.started_at
+          ).toLocaleDateString("en-CA")
+        )
+      );
 
-  const averageMastery = Math.round(
-    subjects.reduce(
-      (sum, subject) => sum + subject.mastery,
-      0
-    ) / subjects.length
-  );
+      return dates.size
+        ? totalHours / dates.size
+        : 0;
+    }
 
-  const maxMinutes = Math.max(
-    ...weeklyStudy.map((item) => item.minutes)
-  );
+    const days = Number(period);
 
-  const filteredSubjects =
-    subjectFilter === "همه"
-      ? subjects
-      : subjects.filter(
-          (subject) =>
-            subject.subject === subjectFilter
-        );
+    return totalHours / days;
+  }, [filteredSessions, totalHours, period]);
 
-  const filteredTopics =
-    subjectFilter === "همه"
-      ? topicData
-      : topicData.filter(
-          (topic) =>
-            topic.subject === subjectFilter
-        );
+  const averagePercentage = useMemo(() => {
+    const values = filteredTests
+      .map(getPercentage)
+      .filter(
+        (value): value is number => value !== null
+      );
+
+    if (!values.length) return null;
+
+    return (
+      values.reduce((sum, value) => sum + value, 0) /
+      values.length
+    );
+  }, [filteredTests]);
+
+  const subjectChartData = useMemo<ChartItem[]>(() => {
+    return subjects
+      .map((subject) => {
+        const minutes = filteredSessions
+          .filter(
+            (session) =>
+              session.subject_id === subject.id
+          )
+          .reduce(
+            (sum, session) =>
+              sum +
+              Number(
+                session.duration_minutes || 0
+              ),
+            0
+          );
+
+        return {
+          name: subject.name,
+          minutes,
+        };
+      })
+      .filter((item) => item.minutes > 0)
+      .sort((a, b) => b.minutes - a.minutes);
+  }, [subjects, filteredSessions]);
+
+  const dailyChartData = useMemo(() => {
+    const map = new Map<
+      string,
+      number
+    >();
+
+    filteredSessions.forEach((session) => {
+      const date = new Date(
+        session.started_at
+      );
+
+      const key =
+        date.toLocaleDateString("fa-IR", {
+          month: "numeric",
+          day: "numeric",
+        });
+
+      map.set(
+        key,
+        (map.get(key) || 0) +
+          Number(session.duration_minutes || 0)
+      );
+    });
+
+    return Array.from(map.entries()).map(
+      ([name, minutes]) => ({
+        name,
+        minutes,
+      })
+    );
+  }, [filteredSessions]);
 
   const strongestSubject = useMemo(() => {
-    return [...subjects].sort(
-      (a, b) => b.mastery - a.mastery
-    )[0];
-  }, []);
+    if (!subjectChartData.length) return null;
 
-  const weakestSubject = useMemo(() => {
-    return [...subjects].sort(
-      (a, b) => a.mastery - b.mastery
-    )[0];
-  }, []);
+    return subjectChartData[0];
+  }, [subjectChartData]);
+
+  const strongestTestSubject = useMemo(() => {
+    const subjectScores = subjects
+      .map((subject) => {
+        const values = filteredTests
+          .filter(
+            (test) =>
+              test.subject_id === subject.id
+          )
+          .map(getPercentage)
+          .filter(
+            (value): value is number =>
+              value !== null
+          );
+
+        if (!values.length) return null;
+
+        return {
+          name: subject.name,
+          average:
+            values.reduce(
+              (sum, value) => sum + value,
+              0
+            ) / values.length,
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          name: string;
+          average: number;
+        } => item !== null
+      )
+      .sort((a, b) => b.average - a.average);
+
+    return subjectScores[0] || null;
+  }, [subjects, filteredTests]);
 
   function formatHours(minutes: number) {
     const hours = Math.floor(minutes / 60);
@@ -175,464 +317,320 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <main className="analytics-page">
-      <header className="analytics-header">
+    <main className="page-container">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">
-            ANALYTICS
-          </span>
+          <div className="page-kicker">
+            تحلیل عملکرد
+          </div>
 
-          <h1>تحلیل و گزارش</h1>
+          <h1>آمار و تحلیل</h1>
 
-          <p>
-            بررسی روند مطالعه، عملکرد آزمون‌ها و وضعیت
-            درس‌ها
+          <p className="page-subtitle">
+            روند مطالعه و عملکرد آزمون‌هایت را بررسی کن.
           </p>
         </div>
 
-        <div className="analytics-period">
+        <div className="period-selector">
           <button
             className={
-              period === "week" ? "active" : ""
+              period === "7"
+                ? "period-active"
+                : ""
             }
-            onClick={() => setPeriod("week")}
+            onClick={() => setPeriod("7")}
           >
-            این هفته
+            ۷ روز
           </button>
 
           <button
             className={
-              period === "month" ? "active" : ""
+              period === "30"
+                ? "period-active"
+                : ""
             }
-            onClick={() => setPeriod("month")}
+            onClick={() => setPeriod("30")}
           >
-            این ماه
+            ۳۰ روز
           </button>
 
           <button
             className={
-              period === "custom" ? "active" : ""
+              period === "all"
+                ? "period-active"
+                : ""
             }
-            onClick={() => setPeriod("custom")}
+            onClick={() => setPeriod("all")}
           >
-            بازه دلخواه
+            همه
           </button>
         </div>
-      </header>
+      </div>
 
-      <section className="analytics-stats">
-        <div className="panel analytics-stat">
-          <span>زمان مطالعه</span>
-
-          <strong>
-            {formatHours(totalMinutes)}
-          </strong>
-
-          <small>مجموع مطالعه ثبت‌شده</small>
+      {loading ? (
+        <div className="empty-card">
+          <p>در حال محاسبه آمار...</p>
         </div>
+      ) : (
+        <>
+          <section className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-icon">
+                <Clock3 size={21} />
+              </div>
 
-        <div className="panel analytics-stat">
-          <span>تعداد تست</span>
-
-          <strong>{totalTests}</strong>
-
-          <small>تست ثبت‌شده</small>
-        </div>
-
-        <div className="panel analytics-stat">
-          <span>میانگین درصد</span>
-
-          <strong>{averagePercentage}٪</strong>
-
-          <small>بر اساس آزمون‌های ثبت‌شده</small>
-        </div>
-
-        <div className="panel analytics-stat">
-          <span>میانگین تسلط</span>
-
-          <strong>{averageMastery}٪</strong>
-
-          <small>برآورد وضعیت مباحث</small>
-        </div>
-      </section>
-
-      <section className="analytics-grid">
-        <div className="panel study-chart-panel">
-          <div className="panel-header">
-            <div>
-              <h2>روند مطالعه</h2>
-
-              <p>
-                مقدار مطالعه در روزهای این هفته
-              </p>
+              <div>
+                <span>کل مطالعه</span>
+                <strong>
+                  {formatHours(totalMinutes)}
+                </strong>
+              </div>
             </div>
 
-            <span className="chart-unit">
-              دقیقه
-            </span>
-          </div>
+            <div className="stat-card">
+              <div className="stat-icon">
+                <CalendarDays size={21} />
+              </div>
 
-          <div className="study-chart">
-            {weeklyStudy.map((item) => {
-              const height =
-                (item.minutes / maxMinutes) * 100;
-
-              return (
-                <div
-                  className="chart-column"
-                  key={item.day}
-                >
-                  <span className="chart-value">
-                    {item.minutes}
-                  </span>
-
-                  <div className="chart-bar-wrapper">
-                    <div
-                      className="chart-bar"
-                      style={{
-                        height: `${height}%`,
-                      }}
-                    />
-                  </div>
-
-                  <span className="chart-day">
-                    {item.day}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="panel analysis-summary-panel">
-          <div className="panel-header">
-            <div>
-              <h2>خلاصه تحلیل</h2>
-
-              <p>
-                بر اساس داده‌های ثبت‌شده
-              </p>
+              <div>
+                <span>میانگین روزانه</span>
+                <strong>
+                  {averageDailyHours.toFixed(1)} ساعت
+                </strong>
+              </div>
             </div>
-          </div>
 
-          <div className="analysis-highlight">
-            <span>بالاترین تسلط</span>
+            <div className="stat-card">
+              <div className="stat-icon">
+                <FileText size={21} />
+              </div>
 
-            <strong>
-              {strongestSubject.subject}
-            </strong>
+              <div>
+                <span>تعداد آزمون</span>
+                <strong>
+                  {filteredTests.length}
+                </strong>
+              </div>
+            </div>
 
-            <small>
-              {strongestSubject.mastery}٪ برآورد تسلط
-            </small>
-          </div>
+            <div className="stat-card">
+              <div className="stat-icon">
+                <TrendingUp size={21} />
+              </div>
 
-          <div className="analysis-highlight warning">
-            <span>نیازمند توجه بیشتر</span>
+              <div>
+                <span>میانگین درصد</span>
+                <strong>
+                  {averagePercentage === null
+                    ? "—"
+                    : `${averagePercentage.toFixed(
+                        1
+                      )}٪`}
+                </strong>
+              </div>
+            </div>
+          </section>
 
-            <strong>
-              {weakestSubject.subject}
-            </strong>
-
-            <small>
-              {weakestSubject.mastery}٪ برآورد تسلط
-            </small>
-          </div>
-
-          <div className="analysis-note">
-            <span>💡</span>
-
-            <p>
-              این تحلیل صرفاً بر اساس داده‌های ثبت‌شده
-              است و به‌تنهایی رابطه علت و معلولی بین
-              مطالعه و عملکرد را اثبات نمی‌کند.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel subject-analysis-panel">
-        <div className="panel-header">
-          <div>
-            <h2>عملکرد درس‌ها</h2>
-
-            <p>
-              مقایسه زمان مطالعه، تست، درصد و تسلط
-            </p>
-          </div>
-
-          <select
-            value={subjectFilter}
-            onChange={(event) =>
-              setSubjectFilter(event.target.value)
-            }
-          >
-            <option value="همه">همه درس‌ها</option>
-
-            {subjects.map((subject) => (
-              <option
-                key={subject.subject}
-                value={subject.subject}
-              >
-                {subject.subject}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="subject-analysis-table">
-          <div className="subject-table-head">
-            <span>درس</span>
-            <span>مطالعه</span>
-            <span>تست</span>
-            <span>درصد</span>
-            <span>تسلط</span>
-          </div>
-
-          {filteredSubjects.map((subject) => (
-            <div
-              className="subject-table-row"
-              key={subject.subject}
-            >
-              <strong>{subject.subject}</strong>
-
-              <span>
-                {formatHours(subject.minutes)}
-              </span>
-
-              <span>{subject.tests}</span>
-
-              <span className="table-percentage">
-                {subject.percentage}٪
-              </span>
-
-              <div className="table-mastery">
+          <section className="analytics-grid">
+            <div className="chart-card">
+              <div className="chart-header">
                 <div>
-                  <span
-                    style={{
-                      width: `${subject.mastery}%`,
-                    }}
-                  />
-                </div>
+                  <h2>
+                    <BarChart3 size={19} />
+                    مطالعه بر اساس درس
+                  </h2>
 
-                <strong>
-                  {subject.mastery}٪
-                </strong>
-              </div>
-            </div>
-          ))}
-
-          {filteredSubjects.length === 0 && (
-            <div className="analytics-empty">
-              داده‌ای برای این درس وجود ندارد.
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="analytics-grid">
-        <div className="panel mastery-panel">
-          <div className="panel-header">
-            <div>
-              <h2>تسلط مباحث</h2>
-
-              <p>
-                برآورد وضعیت مباحث بر اساس داده‌های ثبت‌شده
-              </p>
-            </div>
-          </div>
-
-          <div className="mastery-list">
-            {filteredTopics.map((topic) => (
-              <div
-                className="mastery-item"
-                key={topic.topic}
-              >
-                <div className="mastery-item-header">
-                  <div>
-                    <strong>{topic.topic}</strong>
-
-                    <span>{topic.subject}</span>
-                  </div>
-
-                  <strong>
-                    {topic.mastery}٪
-                  </strong>
-                </div>
-
-                <div className="mastery-progress">
-                  <div
-                    style={{
-                      width: `${topic.mastery}%`,
-                    }}
-                  />
-                </div>
-
-                <div className="mastery-meta">
-                  <span>
-                    {topic.tests} تست
-                  </span>
-
-                  <span>
-                    درصد: {topic.percentage}٪
-                  </span>
+                  <p>
+                    مجموع زمان مطالعه هر درس در بازه
+                    انتخاب‌شده
+                  </p>
                 </div>
               </div>
-            ))}
 
-            {filteredTopics.length === 0 && (
-              <div className="analytics-empty">
-                مبحثی برای این درس ثبت نشده است.
-              </div>
-            )}
-          </div>
-        </div>
+              {subjectChartData.length === 0 ? (
+                <div className="chart-empty">
+                  هنوز داده‌ای برای نمایش وجود ندارد.
+                </div>
+              ) : (
+                <div className="chart-container">
+                  <ResponsiveContainer
+                    width="100%"
+                    height={300}
+                  >
+                    <BarChart
+                      data={subjectChartData}
+                      margin={{
+                        top: 10,
+                        right: 10,
+                        left: 0,
+                        bottom: 10,
+                      }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        opacity={0.15}
+                      />
 
-        <div className="panel recommendations-panel">
-          <div className="panel-header">
-            <div>
-              <h2>پیشنهادهای تحلیلی</h2>
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 12 }}
+                      />
 
-              <p>
-                مواردی که ارزش بررسی دارند
-              </p>
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                      />
+
+                      <Tooltip
+                        formatter={(
+                          value
+                        ) =>
+                          `${value} دقیقه`
+                        }
+                      />
+
+                      <Bar
+                        dataKey="minutes"
+                        radius={[6, 6, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="recommendation-list">
-            <div className="recommendation">
-              <span>۱</span>
+            <div className="chart-card">
+              <div className="chart-header">
+                <div>
+                  <h2>
+                    <Clock3 size={19} />
+                    روند مطالعه
+                  </h2>
+
+                  <p>
+                    زمان مطالعه ثبت‌شده در هر روز
+                  </p>
+                </div>
+              </div>
+
+              {dailyChartData.length === 0 ? (
+                <div className="chart-empty">
+                  هنوز داده‌ای برای نمایش وجود ندارد.
+                </div>
+              ) : (
+                <div className="chart-container">
+                  <ResponsiveContainer
+                    width="100%"
+                    height={300}
+                  >
+                    <BarChart
+                      data={dailyChartData}
+                      margin={{
+                        top: 10,
+                        right: 10,
+                        left: 0,
+                        bottom: 10,
+                      }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        opacity={0.15}
+                      />
+
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 12 }}
+                      />
+
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                      />
+
+                      <Tooltip
+                        formatter={(
+                          value
+                        ) =>
+                          `${value} دقیقه`
+                        }
+                      />
+
+                      <Bar
+                        dataKey="minutes"
+                        radius={[6, 6, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="analytics-insights">
+            <div className="insight-card">
+              <div className="insight-icon">
+                <BookOpen size={20} />
+              </div>
 
               <div>
+                <span>بیشترین زمان مطالعه</span>
+
                 <strong>
-                  بررسی مباحث با تسلط پایین
+                  {strongestSubject
+                    ? strongestSubject.name
+                    : "—"}
                 </strong>
 
-                <p>
-                  مباحثی که درصد تسلط پایین‌تری دارند
-                  در مرورهای بعدی بررسی شوند.
-                </p>
+                {strongestSubject && (
+                  <small>
+                    {formatHours(
+                      strongestSubject.minutes
+                    )}
+                  </small>
+                )}
               </div>
             </div>
 
-            <div className="recommendation">
-              <span>۲</span>
+            <div className="insight-card">
+              <div className="insight-icon">
+                <Target size={20} />
+              </div>
 
               <div>
+                <span>
+                  بالاترین میانگین آزمون
+                </span>
+
                 <strong>
-                  مقایسه زمان و نتیجه
+                  {strongestTestSubject
+                    ? strongestTestSubject.name
+                    : "—"}
                 </strong>
 
-                <p>
-                  زمان مطالعه هر درس را در کنار نتایج
-                  آزمون همان درس بررسی کن.
-                </p>
+                {strongestTestSubject && (
+                  <small>
+                    {strongestTestSubject.average.toFixed(
+                      1
+                    )}
+                    ٪
+                  </small>
+                )}
               </div>
             </div>
+          </section>
 
-            <div className="recommendation">
-              <span>۳</span>
-
-              <div>
-                <strong>
-                  تحلیل آزمون‌های ضعیف
-                </strong>
-
-                <p>
-                  علت اشتباهات و مباحث پرتکرار را از
-                  صفحه آزمون‌ها بررسی کن.
-                </p>
-              </div>
-            </div>
-
-            <div className="recommendation">
-              <span>۴</span>
-
-              <div>
-                <strong>
-                  بررسی روند زمانی
-                </strong>
-
-                <p>
-                  فقط یک روز را ملاک قرار نده و روند چند
-                  هفته را با هم مقایسه کن.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel analytics-records">
-        <div className="panel-header">
-          <div>
-            <h2>شاخص‌های مهم</h2>
+          <section className="analysis-note">
+            <strong>نکته تحلیلی</strong>
 
             <p>
-              چند معیار کاربردی برای بررسی وضعیت فعلی
+              این صفحه آمار ثبت‌شده را نمایش می‌دهد.
+              ارتباط بین زمان مطالعه و نتیجه آزمون به‌تنهایی
+              به معنی رابطه علت و معلولی نیست؛ برای تحلیل
+              دقیق‌تر باید عوامل دیگری مثل نوع مطالعه،
+              مبحث، دشواری آزمون و شرایط مطالعه نیز در نظر
+              گرفته شوند.
             </p>
-          </div>
-        </div>
-
-        <div className="records-grid">
-          <div>
-            <span>بیشترین مطالعه روزانه</span>
-
-            <strong>
-              {Math.max(
-                ...weeklyStudy.map(
-                  (item) => item.minutes
-                )
-              )}{" "}
-              دقیقه
-            </strong>
-
-            <small>در این هفته</small>
-          </div>
-
-          <div>
-            <span>بیشترین درصد</span>
-
-            <strong>
-              {Math.max(
-                ...subjects.map(
-                  (subject) => subject.percentage
-                )
-              )}
-              ٪
-            </strong>
-
-            <small>بین درس‌های ثبت‌شده</small>
-          </div>
-
-          <div>
-            <span>بیشترین تسلط</span>
-
-            <strong>
-              {Math.max(
-                ...subjects.map(
-                  (subject) => subject.mastery
-                )
-              )}
-              ٪
-            </strong>
-
-            <small>برآورد فعلی</small>
-          </div>
-
-          <div>
-            <span>مجموع مطالعه</span>
-
-            <strong>
-              {Math.round(totalMinutes / 60)}
-              {" "}
-              ساعت
-            </strong>
-
-            <small>داده‌های فعلی</small>
-          </div>
-        </div>
-      </section>
+          </section>
+        </>
+      )}
     </main>
   );
-      }
+                }
