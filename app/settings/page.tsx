@@ -1,21 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  Bell,
+  Check,
+  Eye,
+  KeyRound,
+  LogOut,
+  Moon,
+  Save,
+  Shield,
+  User,
+} from "lucide-react";
 
 export default function SettingsPage() {
   const supabase = createClient();
 
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
 
   const [darkMode, setDarkMode] = useState(true);
   const [notifications, setNotifications] = useState(true);
+
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     async function loadProfile() {
@@ -24,219 +35,268 @@ export default function SettingsPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        window.location.href = "/login";
+        setLoading(false);
         return;
       }
 
       setEmail(user.email ?? "");
 
-      const metadata = user.user_metadata;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      setName(metadata?.full_name ?? "");
+      if (profile?.full_name) {
+        setName(profile.full_name);
+      }
+
       setLoading(false);
     }
 
     loadProfile();
   }, []);
 
-  async function saveProfile() {
-    setError("");
-    setMessage("");
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault();
+
     setSaving(true);
+    setMessage("");
 
-    try {
-      const { error: updateError } =
-        await supabase.auth.updateUser({
-          data: {
-            full_name: name.trim(),
-          },
-        });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (updateError) {
-        setError(
-          "ذخیره اطلاعات انجام نشد. دوباره تلاش کن."
-        );
-        return;
-      }
-
-      setMessage("اطلاعات حساب با موفقیت ذخیره شد.");
-    } catch {
-      setError(
-        "خطایی در ارتباط با سرور رخ داد."
-      );
-    } finally {
+    if (!user) {
       setSaving(false);
+      return;
     }
+
+    const { error } = await supabase
+      .from("profiles")
+      .upsert({
+        id: user.id,
+        full_name: name.trim() || null,
+      });
+
+    if (error) {
+      setMessage("ذخیره اطلاعات انجام نشد.");
+    } else {
+      setMessage("اطلاعات با موفقیت ذخیره شد.");
+    }
+
+    setSaving(false);
+  }
+
+  async function changePassword() {
+    if (!email) return;
+
+    const { error } =
+      await supabase.auth.resetPasswordForEmail(
+        email,
+        {
+          redirectTo: `${window.location.origin}/settings`,
+        }
+      );
+
+    if (error) {
+      setMessage(
+        "ارسال لینک تغییر رمز انجام نشد."
+      );
+      return;
+    }
+
+    setMessage(
+      "لینک تغییر رمز عبور به ایمیل شما ارسال شد."
+    );
   }
 
   async function logout() {
     await supabase.auth.signOut();
-
     window.location.href = "/login";
+  }
+
+  function toggleDarkMode() {
+    const next = !darkMode;
+    setDarkMode(next);
+
+    document.documentElement.classList.toggle(
+      "dark",
+      next
+    );
+
+    localStorage.setItem(
+      "study-manager-theme",
+      next ? "dark" : "light"
+    );
+  }
+
+  function toggleNotifications() {
+    const next = !notifications;
+    setNotifications(next);
+
+    localStorage.setItem(
+      "study-manager-notifications",
+      String(next)
+    );
   }
 
   if (loading) {
     return (
-      <main className="app-page">
-        <div className="loading-state">
-          <span className="auth-spinner" />
-          <p>در حال بارگذاری تنظیمات...</p>
+      <main className="page-container">
+        <div className="empty-state">
+          در حال بارگذاری تنظیمات...
         </div>
       </main>
     );
   }
 
   return (
-    <main className="app-page">
+    <main className="page-container">
       <div className="page-header">
         <div>
-          <span className="page-eyebrow">
-            SETTINGS
-          </span>
+          <div className="eyebrow">حساب کاربری</div>
 
           <h1>تنظیمات</h1>
 
           <p>
-            حساب کاربری و تنظیمات Study Manager را
+            اطلاعات حساب، ظاهر برنامه و تنظیمات شخصی را
             مدیریت کن.
           </p>
         </div>
       </div>
 
-      <div className="settings-grid">
-        <section className="dashboard-card">
-          <div className="card-header">
-            <div>
-              <h2>حساب کاربری</h2>
+      {message && (
+        <div className="success-message">
+          <Check size={18} />
+          {message}
+        </div>
+      )}
 
+      <div className="settings-page-grid">
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>اطلاعات حساب</h2>
               <p>
-                اطلاعات پایه حساب خودت را مدیریت کن.
+                اطلاعات پایه حساب کاربری
               </p>
+            </div>
+
+            <div className="panel-header-icon">
+              <User size={20} />
             </div>
           </div>
 
-          <div className="settings-form">
-            <div className="auth-field">
-              <label htmlFor="settings-name">
-                نام
-              </label>
+          <form onSubmit={saveProfile}>
+            <div className="form-group">
+              <label>نام</label>
 
               <input
-                id="settings-name"
-                type="text"
                 value={name}
-                onChange={(event) =>
-                  setName(event.target.value)
+                onChange={(e) =>
+                  setName(e.target.value)
                 }
-                placeholder="نام خود را وارد کن"
+                placeholder="نام شما"
               />
             </div>
 
-            <div className="auth-field">
-              <label htmlFor="settings-email">
-                ایمیل
-              </label>
+            <div className="form-group">
+              <label>ایمیل</label>
 
               <input
-                id="settings-email"
-                type="email"
-                dir="ltr"
                 value={email}
                 disabled
+                type="email"
               />
+
+              <small>
+                ایمیل حساب از این بخش قابل تغییر نیست.
+              </small>
             </div>
 
-            {message && (
-              <div className="settings-message">
-                {message}
-              </div>
-            )}
-
-            {error && (
-              <div className="auth-error">
-                <span>!</span>
-                <p>{error}</p>
-              </div>
-            )}
-
             <button
-              type="button"
               className="primary-button"
-              onClick={saveProfile}
+              type="submit"
               disabled={saving}
             >
+              <Save size={18} />
+
               {saving
                 ? "در حال ذخیره..."
                 : "ذخیره تغییرات"}
             </button>
-          </div>
+          </form>
         </section>
 
-        <section className="dashboard-card">
-          <div className="card-header">
+        <section className="panel">
+          <div className="panel-header">
             <div>
-              <h2>ظاهر برنامه</h2>
-
+              <h2>ظاهر و اعلان‌ها</h2>
               <p>
-                ظاهر و تجربه کاربری را تنظیم کن.
+                نحوه نمایش و دریافت اعلان‌ها
               </p>
+            </div>
+
+            <div className="panel-header-icon">
+              <Eye size={20} />
             </div>
           </div>
 
-          <div className="settings-options">
-            <div className="settings-option">
-              <div>
-                <strong>
-                  حالت تاریک
-                </strong>
+          <div className="settings-list">
+            <div className="setting-row">
+              <div className="setting-info">
+                <div className="setting-icon">
+                  <Moon size={18} />
+                </div>
 
-                <span>
-                  استفاده از رابط کاربری تاریک
-                </span>
+                <div>
+                  <strong>حالت تاریک</strong>
+
+                  <span>
+                    استفاده از ظاهر تیره برنامه
+                  </span>
+                </div>
               </div>
 
               <button
                 type="button"
-                className={
-                  darkMode
-                    ? "toggle active"
-                    : "toggle"
-                }
-                onClick={() =>
-                  setDarkMode(
-                    (current) => !current
-                  )
-                }
-                aria-label="تغییر حالت تاریک"
+                className={`switch ${
+                  darkMode ? "active" : ""
+                }`}
+                onClick={toggleDarkMode}
               >
                 <span />
               </button>
             </div>
 
-            <div className="settings-option">
-              <div>
-                <strong>
-                  اعلان‌ها
-                </strong>
+            <div className="setting-row">
+              <div className="setting-info">
+                <div className="setting-icon">
+                  <Bell size={18} />
+                </div>
 
-                <span>
-                  فعال‌سازی اعلان‌های Study Manager
-                </span>
+                <div>
+                  <strong>
+                    اعلان‌ها
+                  </strong>
+
+                  <span>
+                    فعال بودن اعلان‌های برنامه
+                  </span>
+                </div>
               </div>
 
               <button
                 type="button"
-                className={
+                className={`switch ${
                   notifications
-                    ? "toggle active"
-                    : "toggle"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={
+                  toggleNotifications
                 }
-                onClick={() =>
-                  setNotifications(
-                    (current) => !current
-                  )
-                }
-                aria-label="تغییر اعلان‌ها"
               >
                 <span />
               </button>
@@ -244,68 +304,109 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="dashboard-card">
-          <div className="card-header">
+        <section className="panel">
+          <div className="panel-header">
             <div>
-              <h2>امنیت حساب</h2>
+              <h2>امنیت</h2>
 
               <p>
-                گزینه‌های امنیتی حساب کاربری.
+                مدیریت امنیت حساب کاربری
               </p>
+            </div>
+
+            <div className="panel-header-icon">
+              <Shield size={20} />
             </div>
           </div>
 
-          <div className="settings-actions">
-            <Link
-              href="/forgot-password"
-              className="secondary-button"
-            >
-              تغییر / بازیابی رمز عبور
-            </Link>
+          <div className="settings-list">
+            <div className="setting-row">
+              <div className="setting-info">
+                <div className="setting-icon">
+                  <KeyRound size={18} />
+                </div>
 
-            <button
-              type="button"
-              className="danger-button"
-              onClick={logout}
-            >
-              خروج از حساب
-            </button>
+                <div>
+                  <strong>
+                    تغییر رمز عبور
+                  </strong>
+
+                  <span>
+                    ارسال لینک تغییر رمز به ایمیل
+                  </span>
+                </div>
+              </div>
+
+              <button
+                className="secondary-button"
+                onClick={changePassword}
+              >
+                ارسال لینک
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div className="setting-info">
+                <div className="setting-icon">
+                  <LogOut size={18} />
+                </div>
+
+                <div>
+                  <strong>
+                    خروج از حساب
+                  </strong>
+
+                  <span>
+                    خروج از این دستگاه
+                  </span>
+                </div>
+              </div>
+
+              <button
+                className="secondary-button danger-button"
+                onClick={logout}
+              >
+                خروج
+              </button>
+            </div>
           </div>
         </section>
 
-        <section className="dashboard-card danger-card">
-          <div className="card-header">
+        <section className="panel">
+          <div className="panel-header">
             <div>
-              <h2>منطقه خطر</h2>
+              <h2>داده‌ها</h2>
 
               <p>
-                عملیات حساس مربوط به حساب در این بخش
-                قرار می‌گیرد.
+                مدیریت اطلاعات ذخیره‌شده در برنامه
               </p>
             </div>
           </div>
 
-          <div className="danger-warning">
-            <strong>
-              حذف حساب
-            </strong>
+          <div className="info-box">
+            <Shield size={18} />
 
             <p>
-              حذف حساب و اطلاعات یک عملیات دائمی است.
-              این قابلیت بعداً با تأیید چندمرحله‌ای
-              پیاده‌سازی خواهد شد.
+              اطلاعات حساب و داده‌های اصلی برنامه در
+              Supabase ذخیره می‌شوند و دسترسی هر کاربر
+              با سیاست‌های امنیتی پایگاه داده محدود
+              شده است.
             </p>
+          </div>
 
+          <div className="settings-action-row">
             <button
-              type="button"
-              className="danger-button"
-              disabled
+              className="secondary-button"
+              onClick={() =>
+                (window.location.href =
+                  "/backup")
+              }
             >
-              حذف حساب
+              پشتیبان‌گیری و بازیابی
             </button>
           </div>
         </section>
       </div>
     </main>
   );
-          }
+}
