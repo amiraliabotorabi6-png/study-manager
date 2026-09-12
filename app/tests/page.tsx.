@@ -1,0 +1,472 @@
+"use client";
+
+import { useState } from "react";
+
+type Exam = {
+  id: number;
+  title: string;
+  subject: string;
+  topic: string;
+  date: string;
+  time: string;
+  target: number;
+  score?: number;
+  total: number;
+  priority: "high" | "medium" | "low";
+};
+
+const initialExams: Exam[] = [
+  {
+    id: 1,
+    title: "آزمون زیست‌شناسی",
+    subject: "زیست‌شناسی",
+    topic: "تنظیم عصبی و حواس",
+    date: "۱۴۰۵/۰۶/۲۸",
+    time: "۱۰:۰۰",
+    target: 85,
+    total: 20,
+    priority: "high",
+  },
+  {
+    id: 2,
+    title: "آزمون شیمی",
+    subject: "شیمی",
+    topic: "ساختار اتم و جدول تناوبی",
+    date: "۱۴۰۵/۰۷/۰۳",
+    time: "۱۶:۰۰",
+    target: 80,
+    total: 25,
+    priority: "medium",
+  },
+  {
+    id: 3,
+    title: "آزمون ریاضی",
+    subject: "ریاضی",
+    topic: "تابع",
+    date: "۱۴۰۵/۰۷/۱۰",
+    time: "۰۹:۰۰",
+    target: 75,
+    total: 20,
+    priority: "low",
+  },
+];
+
+export default function ExamsPage() {
+  const [exams, setExams] = useState<Exam[]>(initialExams);
+  const [selectedId, setSelectedId] = useState(1);
+  const [filter, setFilter] = useState<"all" | "high">("all");
+
+  const selectedExam =
+    exams.find((exam) => exam.id === selectedId) ?? exams[0];
+
+  const visibleExams =
+    filter === "high"
+      ? exams.filter((exam) => exam.priority === "high")
+      : exams;
+
+  function addExam() {
+    const id =
+      exams.length > 0
+        ? Math.max(...exams.map((exam) => exam.id)) + 1
+        : 1;
+
+    const newExam: Exam = {
+      id,
+      title: "آزمون جدید",
+      subject: "درس جدید",
+      topic: "مبحث مشخص نشده",
+      date: "۱۴۰۵/۰۷/۱۵",
+      time: "۱۰:۰۰",
+      target: 80,
+      total: 20,
+      priority: "medium",
+    };
+
+    setExams((current) => [...current, newExam]);
+    setSelectedId(id);
+  }
+
+  function deleteExam(id: number) {
+    setExams((current) => current.filter((exam) => exam.id !== id));
+
+    if (selectedId === id && exams.length > 1) {
+      const next = exams.find((exam) => exam.id !== id);
+
+      if (next) {
+        setSelectedId(next.id);
+      }
+    }
+  }
+
+  function priorityLabel(priority: Exam["priority"]) {
+    if (priority === "high") return "بالا";
+    if (priority === "medium") return "متوسط";
+    return "کم";
+  }
+
+  return (
+    <main className="exams-page">
+      <header className="exams-header">
+        <div>
+          <span className="dashboard-label">EXAMS</span>
+
+          <h1>آزمون‌ها</h1>
+
+          <p>
+            مدیریت امتحان‌ها، اهداف و میزان آمادگی
+          </p>
+        </div>
+
+        <button onClick={addExam}>
+          + ثبت آزمون
+        </button>
+      </header>
+
+      <section className="exam-stats">
+        <div className="panel exam-stat">
+          <span>آزمون‌های پیش‌رو</span>
+
+          <strong>{exams.length}</strong>
+
+          <small>آزمون ثبت‌شده</small>
+        </div>
+
+        <div className="panel exam-stat">
+          <span>اولویت بالا</span>
+
+          <strong>
+            {
+              exams.filter(
+                (exam) => exam.priority === "high"
+              ).length
+            }
+          </strong>
+
+          <small>نیازمند توجه بیشتر</small>
+        </div>
+
+        <div className="panel exam-stat">
+          <span>میانگین هدف</span>
+
+          <strong>
+            {exams.length
+              ? Math.round(
+                  exams.reduce(
+                    (sum, exam) => sum + exam.target,
+                    0
+                  ) / exams.length
+                )
+              : 0}
+            ٪
+          </strong>
+
+          <small>هدف تعیین‌شده</small>
+        </div>
+
+        <div className="panel exam-stat">
+          <span>نتیجه ثبت‌شده</span>
+
+          <strong>
+            {
+              exams.filter(
+                (exam) => exam.score !== undefined
+              ).length
+            }
+          </strong>
+
+          <small>آزمون انجام‌شده</small>
+        </div>
+      </section>
+
+      <section className="exams-layout">
+        <aside className="panel exam-list-panel">
+          <div className="panel-header">
+            <div>
+              <h2>فهرست آزمون‌ها</h2>
+
+              <p>آزمون‌های پیش‌رو</p>
+            </div>
+
+            <select
+              value={filter}
+              onChange={(event) =>
+                setFilter(
+                  event.target.value as "all" | "high"
+                )
+              }
+            >
+              <option value="all">همه</option>
+              <option value="high">اولویت بالا</option>
+            </select>
+          </div>
+
+          <div className="exam-list">
+            {visibleExams.map((exam) => (
+              <button
+                key={exam.id}
+                className={`exam-list-item ${
+                  selectedId === exam.id
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  setSelectedId(exam.id)
+                }
+              >
+                <div className="exam-list-date">
+                  <strong>
+                    {exam.date.slice(8)}
+                  </strong>
+
+                  <span>شهریور</span>
+                </div>
+
+                <div className="exam-list-content">
+                  <strong>{exam.title}</strong>
+
+                  <span>{exam.subject}</span>
+
+                  <small>{exam.time}</small>
+                </div>
+
+                <span
+                  className={`priority-dot ${exam.priority}`}
+                />
+              </button>
+            ))}
+
+            {visibleExams.length === 0 && (
+              <div className="exam-empty">
+                آزمونی با این فیلتر وجود ندارد.
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {selectedExam && (
+          <section className="exam-details">
+            <div className="panel exam-hero">
+              <div>
+                <span
+                  className={`priority-label ${selectedExam.priority}`}
+                >
+                  اولویت{" "}
+                  {priorityLabel(
+                    selectedExam.priority
+                  )}
+                </span>
+
+                <h2>{selectedExam.title}</h2>
+
+                <p>
+                  {selectedExam.subject} ·{" "}
+                  {selectedExam.topic}
+                </p>
+              </div>
+
+              <button
+                className="delete-exam"
+                onClick={() =>
+                  deleteExam(selectedExam.id)
+                }
+              >
+                حذف آزمون
+              </button>
+            </div>
+
+            <div className="countdown-card panel">
+              <div>
+                <span>
+                  زمان باقی‌مانده تا آزمون
+                </span>
+
+                <strong>۶ روز</strong>
+
+                <small>
+                  {selectedExam.date} ·{" "}
+                  {selectedExam.time}
+                </small>
+              </div>
+
+              <div className="countdown-progress">
+                <div />
+              </div>
+            </div>
+
+            <div className="exam-detail-grid">
+              <div className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>هدف آزمون</h2>
+
+                    <p>
+                      نتیجه‌ای که می‌خواهی به آن برسی
+                    </p>
+                  </div>
+                </div>
+
+                <div className="target-score">
+                  <strong>
+                    {selectedExam.target}٪
+                  </strong>
+
+                  <span>هدف درصدی</span>
+                </div>
+
+                <div className="score-scale">
+                  <div
+                    style={{
+                      width: `${selectedExam.target}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>وضعیت نتیجه</h2>
+
+                    <p>
+                      نتیجه واقعی آزمون
+                    </p>
+                  </div>
+                </div>
+
+                {selectedExam.score !==
+                undefined ? (
+                  <div className="result-score">
+                    <strong>
+                      {selectedExam.score}٪
+                    </strong>
+
+                    <span>
+                      {selectedExam.score >=
+                      selectedExam.target
+                        ? "هدف محقق شده"
+                        : "کمتر از هدف"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="result-empty">
+                    <span>📝</span>
+
+                    <strong>
+                      هنوز نتیجه‌ای ثبت نشده
+                    </strong>
+
+                    <small>
+                      بعد از انجام آزمون، نتیجه و
+                      جزئیات آن را ثبت کن.
+                    </small>
+
+                    <button>
+                      ثبت نتیجه
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel preparation-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>آمادگی آزمون</h2>
+
+                  <p>
+                    موارد مهم برای آماده‌شدن تا روز
+                    آزمون
+                  </p>
+                </div>
+              </div>
+
+              <div className="preparation-list">
+                <div>
+                  <span className="prep-number">
+                    ۱
+                  </span>
+
+                  <div>
+                    <strong>
+                      مباحث آزمون
+                    </strong>
+
+                    <p>
+                      {selectedExam.topic}
+                    </p>
+                  </div>
+
+                  <span className="prep-status">
+                    در حال بررسی
+                  </span>
+                </div>
+
+                <div>
+                  <span className="prep-number">
+                    ۲
+                  </span>
+
+                  <div>
+                    <strong>
+                      تست و تمرین
+                    </strong>
+
+                    <p>
+                      تعداد تست‌های حل‌شده در این
+                      مبحث
+                    </p>
+                  </div>
+
+                  <span className="prep-status">
+                    ثبت نشده
+                  </span>
+                </div>
+
+                <div>
+                  <span className="prep-number">
+                    ۳
+                  </span>
+
+                  <div>
+                    <strong>
+                      مرور نهایی
+                    </strong>
+
+                    <p>
+                      مرور مباحث ضعیف قبل از آزمون
+                    </p>
+                  </div>
+
+                  <span className="prep-status">
+                    برنامه‌ریزی نشده
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel exam-note-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>تحلیل و یادداشت</h2>
+
+                  <p>
+                    نکات مربوط به این آزمون
+                  </p>
+                </div>
+              </div>
+
+              <textarea
+                placeholder="هدف، وضعیت آمادگی، نکات مهم یا تحلیل نتیجه را اینجا بنویس..."
+                rows={5}
+              />
+
+              <button>
+                ذخیره یادداشت
+              </button>
+            </div>
+          </section>
+        )}
+      </section>
+    </main>
+  );
+}
