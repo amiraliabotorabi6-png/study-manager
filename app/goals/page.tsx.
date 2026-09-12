@@ -1,613 +1,674 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-type GoalType =
-  | "study"
-  | "subject"
-  | "score"
-  | "book"
-  | "topic"
-  | "custom";
-
-type GoalPeriod = "daily" | "weekly" | "monthly" | "long";
-
-type GoalStatus = "active" | "completed" | "paused";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  Target,
+  Plus,
+  Trash2,
+  X,
+  Clock3,
+  CheckCircle2,
+  CalendarDays,
+  BookOpen,
+} from "lucide-react";
 
 type Goal = {
-  id: number;
+  id: string;
   title: string;
-  type: GoalType;
-  period: GoalPeriod;
-  current: number;
-  target: number;
-  unit: string;
-  deadline: string;
-  status: GoalStatus;
-  subject?: string;
-  notes: string;
+  description: string | null;
+  goal_type: string | null;
+  target_value: number | null;
+  current_value: number | null;
+  unit: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
 };
 
-const initialGoals: Goal[] = [
-  {
-    id: 1,
-    title: "مطالعه روزانه",
-    type: "study",
-    period: "daily",
-    current: 4.5,
-    target: 6,
-    unit: "ساعت",
-    deadline: "هر روز",
-    status: "active",
-    notes: "حداقل ۶ ساعت مطالعه خالص در روز",
-  },
-  {
-    id: 2,
-    title: "مطالعه زیست‌شناسی",
-    type: "subject",
-    period: "weekly",
-    current: 7,
-    target: 10,
-    unit: "ساعت",
-    deadline: "۱۴۰۵/۰۶/۲۷",
-    status: "active",
-    subject: "زیست‌شناسی",
-    notes: "تمرکز روی فصل‌های مطالعه‌شده",
-  },
-  {
-    id: 3,
-    title: "درصد شیمی",
-    type: "score",
-    period: "long",
-    current: 68,
-    target: 85,
-    unit: "درصد",
-    deadline: "۱۴۰۵/۰۸/۳۰",
-    status: "active",
-    subject: "شیمی",
-    notes: "هدف‌گذاری برای آزمون‌های آینده",
-  },
-  {
-    id: 4,
-    title: "تکمیل فصل اول زیست",
-    type: "topic",
-    period: "monthly",
-    current: 80,
-    target: 100,
-    unit: "درصد",
-    deadline: "۱۴۰۵/۰۶/۳۱",
-    status: "active",
-    subject: "زیست‌شناسی",
-    notes: "مطالعه، تست و مرور کامل فصل",
-  },
+const goalTypes = [
+  { value: "study_hours", label: "ساعت مطالعه" },
+  { value: "subject_hours", label: "ساعت مطالعه یک درس" },
+  { value: "tests", label: "تعداد آزمون" },
+  { value: "questions", label: "تعداد سؤال" },
+  { value: "score", label: "نمره" },
+  { value: "percentage", label: "درصد" },
+  { value: "topics", label: "تعداد مباحث" },
+  { value: "books", label: "کتاب" },
+  { value: "custom", label: "هدف شخصی" },
 ];
 
-const typeLabels: Record<GoalType, string> = {
-  study: "مطالعه",
-  subject: "درس",
-  score: "درصد",
-  book: "کتاب",
-  topic: "مبحث",
-  custom: "سفارشی",
-};
-
-const periodLabels: Record<GoalPeriod, string> = {
-  daily: "روزانه",
-  weekly: "هفتگی",
-  monthly: "ماهانه",
-  long: "بلندمدت",
-};
-
-const statusLabels: Record<GoalStatus, string> = {
-  active: "فعال",
-  completed: "تکمیل‌شده",
-  paused: "متوقف",
-};
-
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<Goal[]>(initialGoals);
-  const [selectedId, setSelectedId] = useState(1);
-  const [filter, setFilter] = useState<
-    "all" | GoalStatus
-  >("all");
+  const supabase = createClient();
 
-  const selectedGoal =
-    goals.find((goal) => goal.id === selectedId) ??
-    goals[0];
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredGoals = useMemo(() => {
-    if (filter === "all") return goals;
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-    return goals.filter((goal) => goal.status === filter);
-  }, [goals, filter]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [goalType, setGoalType] =
+    useState("study_hours");
+  const [targetValue, setTargetValue] = useState("");
+  const [unit, setUnit] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
-  const activeGoals = goals.filter(
-    (goal) => goal.status === "active"
-  ).length;
+  async function loadGoals() {
+    setLoading(true);
 
-  const completedGoals = goals.filter(
-    (goal) => goal.status === "completed"
-  ).length;
-
-  const averageProgress = goals.length
-    ? Math.round(
-        goals.reduce(
-          (sum, goal) =>
-            sum +
-            Math.min(
-              (goal.current / goal.target) * 100,
-              100
-            ),
-          0
-        ) / goals.length
+    const { data, error } = await supabase
+      .from("goals")
+      .select(
+        "id,title,description,goal_type,target_value,current_value,unit,start_date,end_date,status"
       )
-    : 0;
+      .order("end_date", {
+        ascending: true,
+        nullsFirst: false,
+      });
 
-  function progress(goal: Goal) {
-    if (!goal.target) return 0;
+    if (!error && data) {
+      setGoals(data);
+    }
 
-    return Math.min(
-      Math.round((goal.current / goal.target) * 100),
-      100
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadGoals();
+  }, []);
+
+  function resetForm() {
+    setTitle("");
+    setDescription("");
+    setGoalType("study_hours");
+    setTargetValue("");
+    setUnit("");
+    setStartDate("");
+    setEndDate("");
+  }
+
+  async function addGoal() {
+    if (!title.trim() || adding) return;
+
+    setAdding(true);
+
+    const { error } = await supabase
+      .from("goals")
+      .insert({
+        title: title.trim(),
+        description: description.trim() || null,
+        goal_type: goalType,
+        target_value: targetValue
+          ? Number(targetValue)
+          : null,
+        current_value: 0,
+        unit: unit.trim() || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        status: "active",
+      });
+
+    if (!error) {
+      resetForm();
+      setShowAdd(false);
+      await loadGoals();
+    } else {
+      console.error(error);
+      alert("ثبت هدف با خطا مواجه شد.");
+    }
+
+    setAdding(false);
+  }
+
+  async function deleteGoal(id: string) {
+    const goal = goals.find((item) => item.id === id);
+
+    if (!goal) return;
+
+    const confirmed = window.confirm(
+      `هدف «${goal.title}» حذف شود؟`
     );
+
+    if (!confirmed) return;
+
+    await supabase
+      .from("goals")
+      .delete()
+      .eq("id", id);
+
+    await loadGoals();
   }
 
-  function addGoal() {
-    const id =
-      goals.length > 0
-        ? Math.max(...goals.map((goal) => goal.id)) + 1
-        : 1;
-
-    const newGoal: Goal = {
-      id,
-      title: "هدف جدید",
-      type: "custom",
-      period: "weekly",
-      current: 0,
-      target: 10,
-      unit: "واحد",
-      deadline: "۱۴۰۵/۰۷/۰۱",
-      status: "active",
-      notes: "",
-    };
-
-    setGoals((current) => [newGoal, ...current]);
-    setSelectedId(id);
-  }
-
-  function changeStatus(
-    id: number,
-    status: GoalStatus
+  async function updateCurrentValue(
+    goal: Goal,
+    value: number
   ) {
-    setGoals((current) =>
-      current.map((goal) =>
-        goal.id === id
-          ? { ...goal, status }
-          : goal
-      )
-    );
-  }
+    const nextValue = Math.max(0, value);
 
-  function deleteGoal(id: number) {
-    setGoals((current) =>
-      current.filter((goal) => goal.id !== id)
-    );
+    const completed =
+      goal.target_value !== null &&
+      nextValue >= Number(goal.target_value);
 
-    if (selectedId === id) {
-      const next = goals.find(
-        (goal) => goal.id !== id
-      );
+    const { error } = await supabase
+      .from("goals")
+      .update({
+        current_value: nextValue,
+        status: completed ? "completed" : "active",
+      })
+      .eq("id", goal.id);
 
-      if (next) setSelectedId(next.id);
+    if (!error) {
+      await loadGoals();
     }
   }
 
+  function getGoalTypeLabel(type: string | null) {
+    return (
+      goalTypes.find(
+        (item) => item.value === type
+      )?.label || "هدف شخصی"
+    );
+  }
+
+  function getProgress(goal: Goal) {
+    if (
+      goal.target_value === null ||
+      Number(goal.target_value) <= 0
+    ) {
+      return 0;
+    }
+
+    return Math.min(
+      100,
+      (Number(goal.current_value || 0) /
+        Number(goal.target_value)) *
+        100
+    );
+  }
+
+  function getRemainingDays(
+    endDate: string | null
+  ) {
+    if (!endDate) return null;
+
+    const today = new Date();
+    const end = new Date(endDate);
+
+    today.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    return Math.ceil(
+      (end.getTime() - today.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+  }
+
+  function formatDate(date: string | null) {
+    if (!date) return "بدون تاریخ";
+
+    return new Date(date).toLocaleDateString(
+      "fa-IR"
+    );
+  }
+
+  const completedGoals = useMemo(
+    () =>
+      goals.filter(
+        (goal) => goal.status === "completed"
+      ).length,
+    [goals]
+  );
+
+  const activeGoals = useMemo(
+    () =>
+      goals.filter(
+        (goal) => goal.status !== "completed"
+      ).length,
+    [goals]
+  );
+
+  const averageProgress = useMemo(() => {
+    if (!goals.length) return 0;
+
+    return (
+      goals.reduce(
+        (sum, goal) => sum + getProgress(goal),
+        0
+      ) / goals.length
+    );
+  }, [goals]);
+
+  const overdueGoals = useMemo(
+    () =>
+      goals.filter((goal) => {
+        const days = getRemainingDays(
+          goal.end_date
+        );
+
+        return (
+          goal.status !== "completed" &&
+          days !== null &&
+          days < 0
+        );
+      }).length,
+    [goals]
+  );
+
   return (
-    <main className="goals-page">
-      <header className="goals-header">
+    <main className="page-container">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">
-            GOALS
-          </span>
+          <div className="page-kicker">
+            هدف‌گذاری
+          </div>
 
           <h1>اهداف</h1>
 
-          <p>
-            تعیین، پیگیری و مدیریت اهداف کوتاه‌مدت و
-            بلندمدت
+          <p className="page-subtitle">
+            اهداف کوتاه‌مدت و بلندمدتت را تعریف و میزان
+            پیشرفتت را پیگیری کن.
           </p>
         </div>
 
-        <button onClick={addGoal}>
-          + افزودن هدف
+        <button
+          className="primary-button"
+          onClick={() => setShowAdd(true)}
+        >
+          <Plus size={18} />
+          افزودن هدف
         </button>
-      </header>
+      </div>
 
-      <section className="goal-stats">
-        <div className="panel goal-stat">
-          <span>اهداف فعال</span>
-          <strong>{activeGoals}</strong>
-          <small>در حال پیگیری</small>
+      <section className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Target size={21} />
+          </div>
+
+          <div>
+            <span>کل اهداف</span>
+            <strong>{goals.length}</strong>
+          </div>
         </div>
 
-        <div className="panel goal-stat">
-          <span>تکمیل‌شده</span>
-          <strong>{completedGoals}</strong>
-          <small>هدف محقق‌شده</small>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Clock3 size={21} />
+          </div>
+
+          <div>
+            <span>اهداف فعال</span>
+            <strong>{activeGoals}</strong>
+          </div>
         </div>
 
-        <div className="panel goal-stat">
-          <span>میانگین پیشرفت</span>
-          <strong>{averageProgress}٪</strong>
-          <small>تمام اهداف</small>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <CheckCircle2 size={21} />
+          </div>
+
+          <div>
+            <span>تکمیل‌شده</span>
+            <strong>{completedGoals}</strong>
+          </div>
         </div>
 
-        <div className="panel goal-stat">
-          <span>کل اهداف</span>
-          <strong>{goals.length}</strong>
-          <small>هدف ثبت‌شده</small>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <CalendarDays size={21} />
+          </div>
+
+          <div>
+            <span>میانگین پیشرفت</span>
+            <strong>
+              {averageProgress.toFixed(0)}٪
+            </strong>
+          </div>
         </div>
       </section>
 
-      <section className="goals-layout">
-        <aside className="panel goals-list-panel">
-          <div className="panel-header">
-            <div>
-              <h2>فهرست اهداف</h2>
-              <p>اهداف مطالعه و پیشرفت</p>
-            </div>
+      {overdueGoals > 0 && (
+        <div className="warning-card">
+          <strong>
+            {overdueGoals} هدف از موعد خود عبور کرده
+            است.
+          </strong>
 
-            <select
-              value={filter}
-              onChange={(event) =>
-                setFilter(
-                  event.target.value as
-                    | "all"
-                    | GoalStatus
-                )
-              }
-            >
-              <option value="all">همه</option>
-              <option value="active">فعال</option>
-              <option value="completed">
-                تکمیل‌شده
-              </option>
-              <option value="paused">متوقف</option>
-            </select>
-          </div>
+          <span>
+            وضعیت این اهداف را بررسی و در صورت نیاز
+            تاریخ آن‌ها را اصلاح کن.
+          </span>
+        </div>
+      )}
 
-          <div className="goals-list">
-            {filteredGoals.map((goal) => (
-              <button
-                key={goal.id}
-                className={`goal-list-item ${
-                  selectedId === goal.id
-                    ? "active"
+      {loading ? (
+        <div className="empty-card">
+          <p>در حال دریافت اهداف...</p>
+        </div>
+      ) : goals.length === 0 ? (
+        <div className="empty-card">
+          <Target size={42} />
+
+          <h2>هنوز هدفی ثبت نشده</h2>
+
+          <p>
+            اولین هدف خودت را مشخص کن تا مسیر پیشرفتت
+            قابل اندازه‌گیری شود.
+          </p>
+
+          <button
+            className="primary-button"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus size={18} />
+            افزودن اولین هدف
+          </button>
+        </div>
+      ) : (
+        <section className="goal-list">
+          {goals.map((goal) => {
+            const progress = getProgress(goal);
+            const daysRemaining =
+              getRemainingDays(goal.end_date);
+
+            const completed =
+              goal.status === "completed";
+
+            return (
+              <article
+                className={`goal-card ${
+                  completed
+                    ? "goal-completed"
                     : ""
                 }`}
-                onClick={() =>
-                  setSelectedId(goal.id)
-                }
+                key={goal.id}
               >
-                <div className="goal-list-icon">
-                  {goal.type === "study"
-                    ? "⏱"
-                    : goal.type === "score"
-                    ? "٪"
-                    : goal.type === "subject"
-                    ? "📚"
-                    : goal.type === "topic"
-                    ? "◈"
-                    : "🎯"}
-                </div>
-
-                <div className="goal-list-content">
-                  <strong>{goal.title}</strong>
-
-                  <span>
-                    {typeLabels[goal.type]} ·{" "}
-                    {periodLabels[goal.period]}
-                  </span>
-
-                  <div className="goal-mini-progress">
-                    <div
-                      style={{
-                        width: `${progress(goal)}%`,
-                      }}
-                    />
+                <div className="goal-card-header">
+                  <div className="goal-icon">
+                    <Target size={21} />
                   </div>
+
+                  <div className="goal-title">
+                    <h2>{goal.title}</h2>
+
+                    <span>
+                      {getGoalTypeLabel(
+                        goal.goal_type
+                      )}
+                    </span>
+                  </div>
+
+                  <button
+                    className="icon-button danger"
+                    title="حذف هدف"
+                    onClick={() =>
+                      deleteGoal(goal.id)
+                    }
+                  >
+                    <Trash2 size={17} />
+                  </button>
                 </div>
 
-                <strong className="goal-percent">
-                  {progress(goal)}٪
-                </strong>
-              </button>
-            ))}
+                {goal.description && (
+                  <p className="goal-description">
+                    {goal.description}
+                  </p>
+                )}
 
-            {filteredGoals.length === 0 && (
-              <div className="goal-empty">
-                هدفی با این فیلتر وجود ندارد.
-              </div>
-            )}
-          </div>
-        </aside>
+                <div className="goal-progress-info">
+                  <span>پیشرفت</span>
 
-        {selectedGoal && (
-          <section className="goal-details">
-            <div className="panel goal-detail-header">
+                  <strong>
+                    {goal.current_value ?? 0}
+                    {goal.unit
+                      ? ` ${goal.unit}`
+                      : ""}
+                    {" / "}
+                    {goal.target_value ?? "—"}
+                    {goal.unit
+                      ? ` ${goal.unit}`
+                      : ""}
+                  </strong>
+                </div>
+
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${progress}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="goal-footer">
+                  <div className="goal-dates">
+                    <span>
+                      شروع:{" "}
+                      {formatDate(
+                        goal.start_date
+                      )}
+                    </span>
+
+                    <span>
+                      پایان:{" "}
+                      {formatDate(
+                        goal.end_date
+                      )}
+                    </span>
+                  </div>
+
+                  {completed ? (
+                    <span className="completed-label">
+                      تکمیل‌شده
+                    </span>
+                  ) : daysRemaining !== null ? (
+                    <span
+                      className={
+                        daysRemaining < 0
+                          ? "overdue-label"
+                          : ""
+                      }
+                    >
+                      {daysRemaining < 0
+                        ? "گذشته"
+                        : daysRemaining === 0
+                        ? "امروز"
+                        : `${daysRemaining} روز مانده`}
+                    </span>
+                  ) : null}
+                </div>
+
+                {!completed && (
+                  <div className="goal-update">
+                    <label className="form-label">
+                      مقدار فعلی
+                      <input
+                        className="form-input"
+                        type="number"
+                        min="0"
+                        value={
+                          goal.current_value ?? 0
+                        }
+                        onChange={(event) =>
+                          updateCurrentValue(
+                            goal,
+                            Number(
+                              event.target.value
+                            )
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      {showAdd && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowAdd(false)}
+        >
+          <div
+            className="modal-card"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="modal-header">
               <div>
-                <span
-                  className={`goal-status-badge ${selectedGoal.status}`}
-                >
-                  {statusLabels[selectedGoal.status]}
-                </span>
-
-                <h2>{selectedGoal.title}</h2>
+                <h2>افزودن هدف</h2>
 
                 <p>
-                  {typeLabels[selectedGoal.type]} ·{" "}
-                  {periodLabels[selectedGoal.period]}
-                  {selectedGoal.subject
-                    ? ` · ${selectedGoal.subject}`
-                    : ""}
+                  هدف موردنظر خودت را تعریف کن.
                 </p>
               </div>
 
               <button
-                className="delete-goal"
-                onClick={() =>
-                  deleteGoal(selectedGoal.id)
-                }
+                className="icon-button"
+                onClick={() => setShowAdd(false)}
               >
-                حذف هدف
+                <X size={19} />
               </button>
             </div>
 
-            <div className="panel goal-progress-card">
-              <div className="goal-progress-top">
-                <div>
-                  <span>پیشرفت فعلی</span>
-
-                  <strong>
-                    {progress(selectedGoal)}٪
-                  </strong>
-                </div>
-
-                <div className="goal-numbers">
-                  <strong>
-                    {selectedGoal.current}
-                  </strong>
-
-                  <span>
-                    از {selectedGoal.target}{" "}
-                    {selectedGoal.unit}
-                  </span>
-                </div>
-              </div>
-
-              <div className="large-goal-progress">
-                <div
-                  style={{
-                    width: `${progress(
-                      selectedGoal
-                    )}%`,
-                  }}
+            <div className="form-grid">
+              <label className="form-label full-width">
+                عنوان هدف
+                <input
+                  className="form-input"
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(event.target.value)
+                  }
+                  placeholder="مثلاً ۳۰ ساعت مطالعه در این هفته"
+                  autoFocus
                 />
-              </div>
+              </label>
 
-              <div className="goal-progress-footer">
-                <span>
-                  {selectedGoal.current}{" "}
-                  {selectedGoal.unit} انجام‌شده
-                </span>
-
-                <span>
-                  هدف: {selectedGoal.target}{" "}
-                  {selectedGoal.unit}
-                </span>
-              </div>
-            </div>
-
-            <div className="goal-detail-grid">
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>جزئیات هدف</h2>
-                    <p>اطلاعات اصلی</p>
-                  </div>
-                </div>
-
-                <div className="goal-info-list">
-                  <div>
-                    <span>نوع هدف</span>
-
-                    <strong>
-                      {typeLabels[selectedGoal.type]}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>بازه</span>
-
-                    <strong>
-                      {periodLabels[
-                        selectedGoal.period
-                      ]}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>مهلت</span>
-
-                    <strong>
-                      {selectedGoal.deadline}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>واحد</span>
-
-                    <strong>
-                      {selectedGoal.unit}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>وضعیت هدف</h2>
-                    <p>وضعیت پیگیری را تغییر بده</p>
-                  </div>
-                </div>
-
-                <div className="goal-status-buttons">
-                  {(
-                    Object.keys(
-                      statusLabels
-                    ) as GoalStatus[]
-                  ).map((status) => (
-                    <button
-                      key={status}
-                      className={
-                        selectedGoal.status ===
-                        status
-                          ? "active"
-                          : ""
-                      }
-                      onClick={() =>
-                        changeStatus(
-                          selectedGoal.id,
-                          status
-                        )
-                      }
+              <label className="form-label">
+                نوع هدف
+                <select
+                  className="form-input"
+                  value={goalType}
+                  onChange={(event) =>
+                    setGoalType(
+                      event.target.value
+                    )
+                  }
+                >
+                  {goalTypes.map((item) => (
+                    <option
+                      key={item.value}
+                      value={item.value}
                     >
-                      {statusLabels[status]}
-                    </button>
+                      {item.label}
+                    </option>
                   ))}
-                </div>
-              </div>
+                </select>
+              </label>
+
+              <label className="form-label">
+                مقدار هدف
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={targetValue}
+                  onChange={(event) =>
+                    setTargetValue(
+                      event.target.value
+                    )
+                  }
+                  placeholder="مثلاً 30"
+                />
+              </label>
+
+              <label className="form-label">
+                واحد
+                <input
+                  className="form-input"
+                  value={unit}
+                  onChange={(event) =>
+                    setUnit(event.target.value)
+                  }
+                  placeholder="ساعت، درصد، سؤال..."
+                />
+              </label>
+
+              <label className="form-label">
+                تاریخ شروع
+                <input
+                  className="form-input"
+                  type="date"
+                  value={startDate}
+                  onChange={(event) =>
+                    setStartDate(
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                تاریخ پایان
+                <input
+                  className="form-input"
+                  type="date"
+                  value={endDate}
+                  onChange={(event) =>
+                    setEndDate(
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label full-width">
+                توضیحات
+                <textarea
+                  className="form-input form-textarea"
+                  rows={3}
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(
+                      event.target.value
+                    )
+                  }
+                  placeholder="جزئیات هدف..."
+                />
+              </label>
             </div>
 
-            <div className="panel goal-update-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>به‌روزرسانی پیشرفت</h2>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                onClick={() => setShowAdd(false)}
+              >
+                انصراف
+              </button>
 
-                  <p>
-                    مقدار فعلی هدف را ثبت کن
-                  </p>
-                </div>
-              </div>
-
-              <div className="goal-update-form">
-                <label>
-                  مقدار فعلی
-
-                  <input
-                    type="number"
-                    min="0"
-                    value={selectedGoal.current}
-                    onChange={(event) => {
-                      const value =
-                        Number(event.target.value);
-
-                      setGoals((current) =>
-                        current.map((goal) =>
-                          goal.id ===
-                          selectedGoal.id
-                            ? {
-                                ...goal,
-                                current: value,
-                              }
-                            : goal
-                        )
-                      );
-                    }}
-                  />
-                </label>
-
-                <label>
-                  مقدار هدف
-
-                  <input
-                    type="number"
-                    min="1"
-                    value={selectedGoal.target}
-                    onChange={(event) => {
-                      const value =
-                        Number(event.target.value);
-
-                      setGoals((current) =>
-                        current.map((goal) =>
-                          goal.id ===
-                          selectedGoal.id
-                            ? {
-                                ...goal,
-                                target: value,
-                              }
-                            : goal
-                        )
-                      );
-                    }}
-                  />
-                </label>
-
-                <label>
-                  واحد
-
-                  <input
-                    value={selectedGoal.unit}
-                    onChange={(event) => {
-                      const value =
-                        event.target.value;
-
-                      setGoals((current) =>
-                        current.map((goal) =>
-                          goal.id ===
-                          selectedGoal.id
-                            ? {
-                                ...goal,
-                                unit: value,
-                              }
-                            : goal
-                        )
-                      );
-                    }}
-                  />
-                </label>
-              </div>
-
-              <button>
-                ذخیره پیشرفت
+              <button
+                className="primary-button"
+                disabled={
+                  adding || !title.trim()
+                }
+                onClick={addGoal}
+              >
+                {adding
+                  ? "در حال ثبت..."
+                  : "ثبت هدف"}
               </button>
             </div>
-
-            <div className="panel goal-note-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>یادداشت هدف</h2>
-
-                  <p>
-                    دلیل، توضیحات یا برنامه رسیدن به هدف
-                  </p>
-                </div>
-              </div>
-
-              <textarea
-                defaultValue={selectedGoal.notes}
-                rows={5}
-                placeholder="توضیحات مربوط به این هدف..."
-              />
-
-              <button>
-                ذخیره یادداشت
-              </button>
-            </div>
-          </section>
-        )}
-      </section>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
