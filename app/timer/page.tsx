@@ -1,246 +1,567 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  BookOpen,
+  Pause,
+  Play,
+  RotateCcw,
+  Square,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-type TimerMode = "stopwatch" | "countdown" | "pomodoro";
+type Subject = {
+  id: string;
+  name: string;
+};
+
+type Topic = {
+  id: string;
+  name: string;
+  subject_id: string;
+};
+
+type Mode = "stopwatch" | "countdown" | "pomodoro";
 
 export default function TimerPage() {
-  const [mode, setMode] = useState<TimerMode>("stopwatch");
+  const supabase = createClient();
+
+  const [mode, setMode] = useState<Mode>("stopwatch");
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
-  const [targetMinutes, setTargetMinutes] = useState(25);
-  const [subject, setSubject] = useState("");
-  const [topic, setTopic] = useState("");
-  const [note, setNote] = useState("");
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [countdownMinutes, setCountdownMinutes] =
+    useState(45);
+
+  const [subjects, setSubjects] = useState<Subject[]>(
+    []
+  );
+
+  const [topics, setTopics] = useState<Topic[]>([]);
+
+  const [subjectId, setSubjectId] = useState("");
+  const [topicId, setTopicId] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!running) return;
+    async function loadData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    intervalRef.current = setInterval(() => {
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const [subjectsResult, topicsResult] =
+        await Promise.all([
+          supabase
+            .from("subjects")
+            .select("id, name")
+            .eq("is_active", true)
+            .order("sort_order"),
+
+          supabase
+            .from("topics")
+            .select(
+              "id, name, subject_id"
+            )
+            .eq("is_active", true)
+            .order("sort_order"),
+        ]);
+
+      if (subjectsResult.data) {
+        setSubjects(subjectsResult.data);
+      }
+
+      if (topicsResult.data) {
+        setTopics(topicsResult.data);
+      }
+
+      setLoading(false);
+    }
+
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (!running) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
       setSeconds((current) => {
-        if (mode === "stopwatch") {
-          return current + 1;
-        }
-
-        if (mode === "countdown") {
-          if (current <= 1) {
-            setRunning(false);
-            return 0;
-          }
-
-          return current - 1;
-        }
-
-        if (current <= 1) {
+        if (
+          mode === "countdown" &&
+          current >= countdownMinutes * 60
+        ) {
           setRunning(false);
-          return 0;
+          return current;
         }
 
-        return current - 1;
+        if (
+          mode === "pomodoro" &&
+          current >= 25 * 60
+        ) {
+          setRunning(false);
+          return current;
+        }
+
+        return current + 1;
       });
     }, 1000);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      window.clearInterval(interval);
     };
-  }, [running, mode]);
+  }, [
+    running,
+    mode,
+    countdownMinutes,
+  ]);
 
-  function formatTime(totalSeconds: number) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-
-    return [hours, minutes, secs]
-      .map((value) => String(value).padStart(2, "0"))
-      .join(":");
-  }
-
-  function startTimer() {
-    if (mode !== "stopwatch" && seconds === 0) {
-      setSeconds(targetMinutes * 60);
+  const filteredTopics = useMemo(() => {
+    if (!subjectId) {
+      return [];
     }
 
-    setRunning(true);
-  }
+    return topics.filter(
+      (topic) =>
+        topic.subject_id === subjectId
+    );
+  }, [topics, subjectId]);
 
-  function pauseTimer() {
-    setRunning(false);
-  }
+  const displaySeconds = useMemo(() => {
+    if (
+      mode === "countdown" ||
+      mode === "pomodoro"
+    ) {
+      const target =
+        mode === "countdown"
+          ? countdownMinutes * 60
+          : 25 * 60;
+
+      return Math.max(
+        target - seconds,
+        0
+      );
+    }
+
+    return seconds;
+  }, [
+    mode,
+    seconds,
+    countdownMinutes,
+  ]);
+
+  const hours = Math.floor(
+    displaySeconds / 3600
+  );
+
+  const minutes = Math.floor(
+    (displaySeconds % 3600) / 60
+  );
+
+  const secs = displaySeconds % 60;
+
+  const formattedTime = [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    String(secs).padStart(2, "0"),
+  ].join(":");
 
   function resetTimer() {
     setRunning(false);
-
-    if (mode === "stopwatch") {
-      setSeconds(0);
-    } else {
-      setSeconds(targetMinutes * 60);
-    }
+    setSeconds(0);
+    setMessage("");
+    setError("");
   }
 
-  function changeMode(newMode: TimerMode) {
+  function changeMode(nextMode: Mode) {
+    setMode(nextMode);
     setRunning(false);
-    setMode(newMode);
+    setSeconds(0);
+    setMessage("");
+    setError("");
+  }
 
-    if (newMode === "stopwatch") {
+  async function saveSession() {
+    setError("");
+    setMessage("");
+
+    if (seconds < 60) {
+      setError(
+        "برای ثبت جلسه، حداقل یک دقیقه مطالعه لازم است."
+      );
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const endedAt = new Date();
+      const startedAt = new Date(
+        endedAt.getTime() -
+          seconds * 1000
+      );
+
+      const { error: insertError } =
+        await supabase
+          .from("study_sessions")
+          .insert({
+            user_id: user.id,
+            subject_id:
+              subjectId || null,
+            topic_id:
+              topicId || null,
+            started_at:
+              startedAt.toISOString(),
+            ended_at:
+              endedAt.toISOString(),
+            duration_minutes:
+              Math.floor(seconds / 60),
+            session_type:
+              mode === "pomodoro"
+                ? "pomodoro"
+                : "study",
+            is_completed: true,
+          });
+
+      if (insertError) {
+        setError(
+          "ثبت جلسه مطالعه انجام نشد."
+        );
+        return;
+      }
+
+      setMessage(
+        "جلسه مطالعه با موفقیت ثبت شد."
+      );
+
       setSeconds(0);
-    } else {
-      setSeconds(targetMinutes * 60);
+      setRunning(false);
+    } catch {
+      setError(
+        "خطایی در ارتباط با سرور رخ داد."
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
-  function changeTarget(value: number) {
-    const safeValue = Math.max(1, value);
-    setTargetMinutes(safeValue);
+  if (loading) {
+    return (
+      <main className="app-page">
+        <div className="loading-state">
+          <span className="auth-spinner" />
 
-    if (!running && mode !== "stopwatch") {
-      setSeconds(safeValue * 60);
-    }
+          <p>
+            در حال بارگذاری تایمر...
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main className="timer-page">
-      <header className="timer-header">
+    <main className="app-page timer-page">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">STUDY MANAGER</span>
-          <h1>تایمر مطالعه</h1>
-          <p>زمان مطالعه‌ات را دقیق ثبت و مدیریت کن.</p>
+          <span className="page-eyebrow">
+            STUDY TIMER
+          </span>
+
+          <h1>
+            تایمر مطالعه
+          </h1>
+
+          <p>
+            زمان مطالعه را دقیق ثبت و مدیریت کن.
+          </p>
         </div>
 
-        <div className="timer-status">
-          <span className={running ? "status-dot active" : "status-dot"} />
-          {running ? "در حال مطالعه" : "متوقف"}
-        </div>
-      </header>
+        <Link
+          href="/dashboard"
+          className="secondary-button"
+        >
+          <ArrowRight size={17} />
+          داشبورد
+        </Link>
+      </div>
 
-      <section className="timer-layout">
-        <div className="timer-main-card">
+      <div className="timer-layout">
+        <section className="dashboard-card timer-card">
           <div className="timer-modes">
             <button
-              className={mode === "stopwatch" ? "mode active" : "mode"}
-              onClick={() => changeMode("stopwatch")}
+              type="button"
+              className={
+                mode === "stopwatch"
+                  ? "timer-mode active"
+                  : "timer-mode"
+              }
+              onClick={() =>
+                changeMode("stopwatch")
+              }
             >
               کرنومتر
             </button>
 
             <button
-              className={mode === "countdown" ? "mode active" : "mode"}
-              onClick={() => changeMode("countdown")}
+              type="button"
+              className={
+                mode === "countdown"
+                  ? "timer-mode active"
+                  : "timer-mode"
+              }
+              onClick={() =>
+                changeMode("countdown")
+              }
             >
               شمارش معکوس
             </button>
 
             <button
-              className={mode === "pomodoro" ? "mode active" : "mode"}
-              onClick={() => changeMode("pomodoro")}
+              type="button"
+              className={
+                mode === "pomodoro"
+                  ? "timer-mode active"
+                  : "timer-mode"
+              }
+              onClick={() =>
+                changeMode("pomodoro")
+              }
             >
               پومودورو
             </button>
           </div>
 
+          {mode === "countdown" && (
+            <div className="timer-setting">
+              <label>
+                مدت شمارش معکوس
+              </label>
+
+              <select
+                value={countdownMinutes}
+                onChange={(event) => {
+                  setCountdownMinutes(
+                    Number(event.target.value)
+                  );
+                  setSeconds(0);
+                }}
+                disabled={running}
+              >
+                <option value={15}>
+                  ۱۵ دقیقه
+                </option>
+
+                <option value={25}>
+                  ۲۵ دقیقه
+                </option>
+
+                <option value={45}>
+                  ۴۵ دقیقه
+                </option>
+
+                <option value={60}>
+                  ۶۰ دقیقه
+                </option>
+
+                <option value={90}>
+                  ۹۰ دقیقه
+                </option>
+
+                <option value={120}>
+                  ۱۲۰ دقیقه
+                </option>
+              </select>
+            </div>
+          )}
+
           <div className="timer-display">
-            <span>{formatTime(seconds)}</span>
+            <span dir="ltr">
+              {formattedTime}
+            </span>
+
+            <small>
+              {mode === "stopwatch"
+                ? "زمان سپری‌شده"
+                : mode === "pomodoro"
+                ? "پومودورو ۲۵ دقیقه‌ای"
+                : "زمان باقی‌مانده"}
+            </small>
           </div>
 
           <div className="timer-controls">
-            {!running ? (
-              <button className="start-button" onClick={startTimer}>
-                شروع مطالعه
-              </button>
-            ) : (
-              <button className="pause-button" onClick={pauseTimer}>
-                توقف موقت
-              </button>
-            )}
+            <button
+              type="button"
+              className="timer-main-button"
+              onClick={() =>
+                setRunning(
+                  (current) => !current
+                )
+              }
+            >
+              {running ? (
+                <>
+                  <Pause size={21} />
+                  توقف موقت
+                </>
+              ) : (
+                <>
+                  <Play size={21} />
+                  شروع مطالعه
+                </>
+              )}
+            </button>
 
-            <button className="reset-button" onClick={resetTimer}>
-              بازنشانی
+            <button
+              type="button"
+              className="timer-reset-button"
+              onClick={resetTimer}
+              title="بازنشانی"
+            >
+              <RotateCcw size={20} />
+            </button>
+
+            <button
+              type="button"
+              className="timer-reset-button"
+              onClick={saveSession}
+              disabled={
+                saving || seconds < 60
+              }
+              title="ثبت جلسه"
+            >
+              <Square size={18} />
             </button>
           </div>
 
-          {mode !== "stopwatch" && (
-            <div className="target-control">
-              <label htmlFor="target">مدت هدف</label>
-
-              <div className="target-input">
-                <input
-                  id="target"
-                  type="number"
-                  min="1"
-                  value={targetMinutes}
-                  onChange={(event) =>
-                    changeTarget(Number(event.target.value))
-                  }
-                />
-                <span>دقیقه</span>
-              </div>
+          {message && (
+            <div className="settings-message">
+              {message}
             </div>
           )}
-        </div>
 
-        <aside className="timer-side-card">
-          <h2>اطلاعات جلسه</h2>
-          <p>برای ثبت دقیق‌تر، مشخصات مطالعه را وارد کن.</p>
+          {error && (
+            <div className="auth-error">
+              <span>!</span>
+              <p>{error}</p>
+            </div>
+          )}
+        </section>
 
-          <div className="field">
-            <label htmlFor="subject">درس</label>
-            <select
-              id="subject"
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-            >
-              <option value="">انتخاب درس</option>
-              <option value="زیست‌شناسی">زیست‌شناسی</option>
-              <option value="شیمی">شیمی</option>
-              <option value="ریاضی">ریاضی</option>
-              <option value="فیزیک">فیزیک</option>
-              <option value="فارسی">فارسی</option>
-              <option value="دینی">دینی</option>
-              <option value="عربی">عربی</option>
-              <option value="زبان">زبان</option>
-              <option value="زمین‌شناسی">زمین‌شناسی</option>
-              <option value="نگارش">نگارش</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="topic">مبحث</label>
-            <input
-              id="topic"
-              type="text"
-              placeholder="مثلاً گوارش"
-              value={topic}
-              onChange={(event) => setTopic(event.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="note">یادداشت جلسه</label>
-            <textarea
-              id="note"
-              rows={5}
-              placeholder="نکات، کیفیت مطالعه یا توضیحات..."
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </div>
-
-          <div className="session-info">
+        <aside className="dashboard-card timer-sidebar">
+          <div className="card-header">
             <div>
-              <span>درس</span>
-              <strong>{subject || "—"}</strong>
+              <h2>
+                مشخصات جلسه
+              </h2>
+
+              <p>
+                درس و مبحث مطالعه را مشخص کن.
+              </p>
+            </div>
+          </div>
+
+          <div className="settings-form">
+            <div className="auth-field">
+              <label htmlFor="timer-subject">
+                درس
+              </label>
+
+              <select
+                id="timer-subject"
+                value={subjectId}
+                onChange={(event) => {
+                  setSubjectId(
+                    event.target.value
+                  );
+                  setTopicId("");
+                }}
+              >
+                <option value="">
+                  انتخاب درس
+                </option>
+
+                {subjects.map((subject) => (
+                  <option
+                    key={subject.id}
+                    value={subject.id}
+                  >
+                    {subject.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div>
-              <span>مبحث</span>
-              <strong>{topic || "—"}</strong>
+            <div className="auth-field">
+              <label htmlFor="timer-topic">
+                مبحث
+              </label>
+
+              <select
+                id="timer-topic"
+                value={topicId}
+                onChange={(event) =>
+                  setTopicId(
+                    event.target.value
+                  )
+                }
+                disabled={!subjectId}
+              >
+                <option value="">
+                  {subjectId
+                    ? "انتخاب مبحث"
+                    : "ابتدا درس را انتخاب کن"}
+                </option>
+
+                {filteredTopics.map(
+                  (topic) => (
+                    <option
+                      key={topic.id}
+                      value={topic.id}
+                    >
+                      {topic.name}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+
+            <div className="timer-info-box">
+              <BookOpen size={19} />
+
+              <div>
+                <strong>
+                  ثبت خودکار
+                </strong>
+
+                <span>
+                  پس از پایان جلسه، زمان مطالعه
+                  در سوابق ثبت می‌شود.
+                </span>
+              </div>
             </div>
           </div>
         </aside>
-      </section>
+      </div>
     </main>
   );
-      }
+}
