@@ -1,349 +1,525 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  CalendarDays,
+  Clock3,
+  Plus,
+  Trash2,
+  Target,
+  X,
+  BookOpen,
+} from "lucide-react";
 
-type Exam = {
-  id: number;
-  title: string;
-  subject: string;
-  topic: string;
-  date: string;
-  time: string;
-  target: number;
-  score?: number;
-  total: number;
-  priority: "high" | "medium" | "low";
+type Subject = {
+  id: string;
+  name: string;
 };
 
-const initialExams: Exam[] = [
-  {
-    id: 1,
-    title: "آزمون زیست‌شناسی",
-    subject: "زیست‌شناسی",
-    topic: "تنظیم عصبی و حواس",
-    date: "۱۴۰۵/۰۶/۲۸",
-    time: "۱۰:۰۰",
-    target: 85,
-    total: 20,
-    priority: "high",
-  },
-  {
-    id: 2,
-    title: "آزمون شیمی",
-    subject: "شیمی",
-    topic: "ساختار اتم و جدول تناوبی",
-    date: "۱۴۰۵/۰۷/۰۳",
-    time: "۱۶:۰۰",
-    target: 80,
-    total: 25,
-    priority: "medium",
-  },
-  {
-    id: 3,
-    title: "آزمون ریاضی",
-    subject: "ریاضی",
-    topic: "تابع",
-    date: "۱۴۰۵/۰۷/۱۰",
-    time: "۰۹:۰۰",
-    target: 75,
-    total: 20,
-    priority: "low",
-  },
-];
+type Exam = {
+  id: string;
+  name: string;
+  subject_id: string | null;
+  topic: string | null;
+  exam_date: string;
+  target_score: number | null;
+  actual_score: number | null;
+  notes: string | null;
+};
 
 export default function ExamsPage() {
-  const [exams, setExams] = useState<Exam[]>(initialExams);
-  const [selectedId, setSelectedId] = useState(1);
-  const [filter, setFilter] = useState<"all" | "high">("all");
+  const supabase = createClient();
 
-  const selectedExam =
-    exams.find((exam) => exam.id === selectedId) ?? exams[0];
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const visibleExams =
-    filter === "high"
-      ? exams.filter((exam) => exam.priority === "high")
-      : exams;
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-  function addExam() {
-    const id =
-      exams.length > 0
-        ? Math.max(...exams.map((exam) => exam.id)) + 1
-        : 1;
+  const [name, setName] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [topic, setTopic] = useState("");
+  const [examDate, setExamDate] = useState("");
+  const [targetScore, setTargetScore] = useState("");
+  const [notes, setNotes] = useState("");
 
-    const newExam: Exam = {
-      id,
-      title: "آزمون جدید",
-      subject: "درس جدید",
-      topic: "مبحث مشخص نشده",
-      date: "۱۴۰۵/۰۷/۱۵",
-      time: "۱۰:۰۰",
-      target: 80,
-      total: 20,
-      priority: "medium",
-    };
+  async function loadData() {
+    setLoading(true);
 
-    setExams((current) => [...current, newExam]);
-    setSelectedId(id);
-  }
+    const [examsResult, subjectsResult] =
+      await Promise.all([
+        supabase
+          .from("exams")
+          .select(
+            "id,name,subject_id,topic,exam_date,target_score,actual_score,notes"
+          )
+          .order("exam_date", { ascending: true }),
 
-  function deleteExam(id: number) {
-    setExams((current) => current.filter((exam) => exam.id !== id));
+        supabase
+          .from("subjects")
+          .select("id,name")
+          .order("name"),
+      ]);
 
-    if (selectedId === id && exams.length > 1) {
-      const next = exams.find((exam) => exam.id !== id);
-      if (next) setSelectedId(next.id);
+    if (examsResult.data) {
+      setExams(examsResult.data);
     }
+
+    if (subjectsResult.data) {
+      setSubjects(subjectsResult.data);
+    }
+
+    setLoading(false);
   }
 
-  function priorityLabel(priority: Exam["priority"]) {
-    if (priority === "high") return "بالا";
-    if (priority === "medium") return "متوسط";
-    return "کم";
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  function resetForm() {
+    setName("");
+    setSubjectId("");
+    setTopic("");
+    setExamDate("");
+    setTargetScore("");
+    setNotes("");
   }
+
+  async function addExam() {
+    if (!name.trim() || !examDate || adding) return;
+
+    setAdding(true);
+
+    const { error } = await supabase
+      .from("exams")
+      .insert({
+        name: name.trim(),
+        subject_id: subjectId || null,
+        topic: topic.trim() || null,
+        exam_date: examDate,
+        target_score: targetScore
+          ? Number(targetScore)
+          : null,
+        notes: notes.trim() || null,
+      });
+
+    if (!error) {
+      resetForm();
+      setShowAdd(false);
+      await loadData();
+    }
+
+    setAdding(false);
+  }
+
+  async function deleteExam(id: string) {
+    const exam = exams.find((item) => item.id === id);
+
+    if (!exam) return;
+
+    const confirmed = window.confirm(
+      `آزمون «${exam.name}» حذف شود؟`
+    );
+
+    if (!confirmed) return;
+
+    await supabase
+      .from("exams")
+      .delete()
+      .eq("id", id);
+
+    await loadData();
+  }
+
+  function getSubjectName(subjectId: string | null) {
+    if (!subjectId) return "بدون درس";
+
+    return (
+      subjects.find(
+        (subject) => subject.id === subjectId
+      )?.name || "بدون درس"
+    );
+  }
+
+  function getDaysRemaining(date: string) {
+    const exam = new Date(date);
+    const now = new Date();
+
+    exam.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
+
+    const difference =
+      exam.getTime() - now.getTime();
+
+    return Math.ceil(
+      difference / (1000 * 60 * 60 * 24)
+    );
+  }
+
+  function getExamStatus(date: string) {
+    const days = getDaysRemaining(date);
+
+    if (days < 0) return "گذشته";
+    if (days === 0) return "امروز";
+    if (days === 1) return "فردا";
+    return `${days} روز مانده`;
+  }
+
+  const upcomingExams = useMemo(
+    () =>
+      exams.filter(
+        (exam) => getDaysRemaining(exam.exam_date) >= 0
+      ),
+    [exams]
+  );
+
+  const completedExams = useMemo(
+    () =>
+      exams.filter(
+        (exam) => getDaysRemaining(exam.exam_date) < 0
+      ),
+    [exams]
+  );
+
+  const todayExams = useMemo(
+    () =>
+      exams.filter(
+        (exam) => getDaysRemaining(exam.exam_date) === 0
+      ),
+    [exams]
+  );
 
   return (
-    <main className="exams-page">
-      <header className="exams-header">
+    <main className="page-container">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">EXAMS</span>
+          <div className="page-kicker">
+            مدیریت آزمون‌ها
+          </div>
+
           <h1>آزمون‌ها</h1>
-          <p>مدیریت امتحان‌ها، اهداف و میزان آمادگی</p>
+
+          <p className="page-subtitle">
+            آزمون‌های پیش‌رو، هدف‌ها و نتایجت را مدیریت کن.
+          </p>
         </div>
 
-        <button onClick={addExam}>+ ثبت آزمون</button>
-      </header>
+        <button
+          className="primary-button"
+          onClick={() => setShowAdd(true)}
+        >
+          <Plus size={18} />
+          افزودن آزمون
+        </button>
+      </div>
 
-      <section className="exam-stats">
-        <div className="panel exam-stat">
-          <span>آزمون‌های پیش‌رو</span>
-          <strong>{exams.length}</strong>
-          <small>آزمون ثبت‌شده</small>
+      <section className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <CalendarDays size={21} />
+          </div>
+
+          <div>
+            <span>کل آزمون‌ها</span>
+            <strong>{exams.length}</strong>
+          </div>
         </div>
 
-        <div className="panel exam-stat">
-          <span>اولویت بالا</span>
-          <strong>
-            {exams.filter((exam) => exam.priority === "high").length}
-          </strong>
-          <small>نیازمند توجه بیشتر</small>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Clock3 size={21} />
+          </div>
+
+          <div>
+            <span>آزمون‌های پیش‌رو</span>
+            <strong>{upcomingExams.length}</strong>
+          </div>
         </div>
 
-        <div className="panel exam-stat">
-          <span>میانگین هدف</span>
-          <strong>
-            {exams.length
-              ? Math.round(
-                  exams.reduce((sum, exam) => sum + exam.target, 0) /
-                    exams.length
-                )
-              : 0}
-            ٪
-          </strong>
-          <small>هدف تعیین‌شده</small>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Target size={21} />
+          </div>
+
+          <div>
+            <span>آزمون امروز</span>
+            <strong>{todayExams.length}</strong>
+          </div>
         </div>
 
-        <div className="panel exam-stat">
-          <span>نتیجه ثبت‌شده</span>
-          <strong>
-            {exams.filter((exam) => exam.score !== undefined).length}
-          </strong>
-          <small>آزمون انجام‌شده</small>
+        <div className="stat-card">
+          <div className="stat-icon">
+            <BookOpen size={21} />
+          </div>
+
+          <div>
+            <span>آزمون‌های انجام‌شده</span>
+            <strong>{completedExams.length}</strong>
+          </div>
         </div>
       </section>
 
-      <section className="exams-layout">
-        <aside className="panel exam-list-panel">
-          <div className="panel-header">
-            <div>
-              <h2>فهرست آزمون‌ها</h2>
-              <p>آزمون‌های پیش‌رو</p>
-            </div>
+      {loading ? (
+        <div className="empty-card">
+          <p>در حال دریافت آزمون‌ها...</p>
+        </div>
+      ) : exams.length === 0 ? (
+        <div className="empty-card">
+          <CalendarDays size={42} />
 
-            <select
-              value={filter}
-              onChange={(event) =>
-                setFilter(event.target.value as "all" | "high")
-              }
-            >
-              <option value="all">همه</option>
-              <option value="high">اولویت بالا</option>
-            </select>
-          </div>
+          <h2>هنوز آزمونی ثبت نشده</h2>
 
-          <div className="exam-list">
-            {visibleExams.map((exam) => (
-              <button
-                key={exam.id}
-                className={`exam-list-item ${
-                  selectedId === exam.id ? "active" : ""
+          <p>
+            اولین آزمونت را اضافه کن تا برنامه‌ریزی و
+            پیگیری آمادگی را شروع کنیم.
+          </p>
+
+          <button
+            className="primary-button"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus size={18} />
+            افزودن آزمون
+          </button>
+        </div>
+      ) : (
+        <section className="exam-list">
+          {exams.map((exam) => {
+            const daysRemaining = getDaysRemaining(
+              exam.exam_date
+            );
+
+            const isPast = daysRemaining < 0;
+            const isToday = daysRemaining === 0;
+
+            return (
+              <article
+                className={`exam-card ${
+                  isToday ? "exam-today" : ""
                 }`}
-                onClick={() => setSelectedId(exam.id)}
+                key={exam.id}
               >
-                <div className="exam-list-date">
-                  <strong>{exam.date.slice(8)}</strong>
-                  <span>شهریور</span>
+                <div className="exam-card-main">
+                  <div className="exam-date-box">
+                    <CalendarDays size={20} />
+
+                    <strong>
+                      {new Date(
+                        exam.exam_date
+                      ).toLocaleDateString("fa-IR")}
+                    </strong>
+                  </div>
+
+                  <div className="exam-info">
+                    <div className="exam-title-row">
+                      <h2>{exam.name}</h2>
+
+                      <span
+                        className={`status-badge ${
+                          isPast
+                            ? "status-past"
+                            : isToday
+                            ? "status-today"
+                            : "status-upcoming"
+                        }`}
+                      >
+                        {getExamStatus(
+                          exam.exam_date
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="exam-meta">
+                      <span>
+                        <BookOpen size={15} />
+                        {getSubjectName(
+                          exam.subject_id
+                        )}
+                      </span>
+
+                      {exam.topic && (
+                        <span>
+                          مبحث: {exam.topic}
+                        </span>
+                      )}
+
+                      {exam.target_score !== null && (
+                        <span>
+                          هدف:{" "}
+                          {exam.target_score}
+                        </span>
+                      )}
+                    </div>
+
+                    {exam.notes && (
+                      <p className="exam-notes">
+                        {exam.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    className="icon-button danger"
+                    title="حذف آزمون"
+                    onClick={() =>
+                      deleteExam(exam.id)
+                    }
+                  >
+                    <Trash2 size={17} />
+                  </button>
                 </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
 
-                <div className="exam-list-content">
-                  <strong>{exam.title}</strong>
-                  <span>{exam.subject}</span>
-                  <small>{exam.time}</small>
-                </div>
-
-                <span className={`priority-dot ${exam.priority}`} />
-              </button>
-            ))}
-
-            {visibleExams.length === 0 && (
-              <div className="exam-empty">
-                آزمونی با این فیلتر وجود ندارد.
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {selectedExam && (
-          <section className="exam-details">
-            <div className="panel exam-hero">
+      {showAdd && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowAdd(false)}
+        >
+          <div
+            className="modal-card"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="modal-header">
               <div>
-                <span
-                  className={`priority-label ${selectedExam.priority}`}
-                >
-                  اولویت {priorityLabel(selectedExam.priority)}
-                </span>
-
-                <h2>{selectedExam.title}</h2>
-
+                <h2>افزودن آزمون</h2>
                 <p>
-                  {selectedExam.subject} · {selectedExam.topic}
+                  مشخصات آزمون را وارد کن.
                 </p>
               </div>
 
               <button
-                className="delete-exam"
-                onClick={() => deleteExam(selectedExam.id)}
+                className="icon-button"
+                onClick={() => setShowAdd(false)}
               >
-                حذف آزمون
+                <X size={19} />
               </button>
             </div>
 
-            <div className="countdown-card panel">
-              <div>
-                <span>زمان باقی‌مانده تا آزمون</span>
-                <strong>۶ روز</strong>
-                <small>{selectedExam.date} · {selectedExam.time}</small>
-              </div>
+            <div className="form-grid">
+              <label className="form-label">
+                نام آزمون
+                <input
+                  className="form-input"
+                  value={name}
+                  onChange={(event) =>
+                    setName(event.target.value)
+                  }
+                  placeholder="مثلاً آزمون زیست فصل اول"
+                  autoFocus
+                />
+              </label>
 
-              <div className="countdown-progress">
-                <div />
-              </div>
+              <label className="form-label">
+                درس
+                <select
+                  className="form-input"
+                  value={subjectId}
+                  onChange={(event) =>
+                    setSubjectId(event.target.value)
+                  }
+                >
+                  <option value="">
+                    انتخاب درس
+                  </option>
+
+                  {subjects.map((subject) => (
+                    <option
+                      key={subject.id}
+                      value={subject.id}
+                    >
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="form-label">
+                مبحث
+                <input
+                  className="form-input"
+                  value={topic}
+                  onChange={(event) =>
+                    setTopic(event.target.value)
+                  }
+                  placeholder="مثلاً تنظیم عصبی"
+                />
+              </label>
+
+              <label className="form-label">
+                تاریخ آزمون
+                <input
+                  className="form-input"
+                  type="date"
+                  value={examDate}
+                  onChange={(event) =>
+                    setExamDate(event.target.value)
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                نمره هدف
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={targetScore}
+                  onChange={(event) =>
+                    setTargetScore(
+                      event.target.value
+                    )
+                  }
+                  placeholder="مثلاً 80"
+                />
+              </label>
+
+              <label className="form-label full-width">
+                یادداشت
+                <textarea
+                  className="form-input form-textarea"
+                  value={notes}
+                  onChange={(event) =>
+                    setNotes(event.target.value)
+                  }
+                  placeholder="نکات مربوط به آزمون..."
+                  rows={3}
+                />
+              </label>
             </div>
 
-            <div className="exam-detail-grid">
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>هدف آزمون</h2>
-                    <p>نتیجه‌ای که می‌خواهی به آن برسی</p>
-                  </div>
-                </div>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                onClick={() => setShowAdd(false)}
+              >
+                انصراف
+              </button>
 
-                <div className="target-score">
-                  <strong>{selectedExam.target}٪</strong>
-                  <span>هدف درصدی</span>
-                </div>
-
-                <div className="score-scale">
-                  <div style={{ width: `${selectedExam.target}%` }} />
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>وضعیت نتیجه</h2>
-                    <p>نتیجه واقعی آزمون</p>
-                  </div>
-                </div>
-
-                {selectedExam.score !== undefined ? (
-                  <div className="result-score">
-                    <strong>{selectedExam.score}٪</strong>
-                    <span>
-                      {selectedExam.score >= selectedExam.target
-                        ? "هدف محقق شده"
-                        : "کمتر از هدف"}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="result-empty">
-                    <span>📝</span>
-                    <strong>هنوز نتیجه‌ای ثبت نشده</strong>
-                    <small>
-                      بعد از انجام آزمون، نتیجه و جزئیات آن را ثبت کن.
-                    </small>
-                    <button>ثبت نتیجه</button>
-                  </div>
-                )}
-              </div>
+              <button
+                className="primary-button"
+                disabled={
+                  adding ||
+                  !name.trim() ||
+                  !examDate
+                }
+                onClick={addExam}
+              >
+                {adding
+                  ? "در حال ثبت..."
+                  : "ثبت آزمون"}
+              </button>
             </div>
-
-            <div className="panel preparation-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>آمادگی آزمون</h2>
-                  <p>موارد مهم برای آماده‌شدن تا روز آزمون</p>
-                </div>
-              </div>
-
-              <div className="preparation-list">
-                <div>
-                  <span className="prep-number">۱</span>
-                  <div>
-                    <strong>مباحث آزمون</strong>
-                    <p>{selectedExam.topic}</p>
-                  </div>
-                  <span className="prep-status">در حال بررسی</span>
-                </div>
-
-                <div>
-                  <span className="prep-number">۲</span>
-                  <div>
-                    <strong>تست و تمرین</strong>
-                    <p>تعداد تست‌های حل‌شده در این مبحث</p>
-                  </div>
-                  <span className="prep-status">ثبت نشده</span>
-                </div>
-
-                <div>
-                  <span className="prep-number">۳</span>
-                  <div>
-                    <strong>مرور نهایی</strong>
-                    <p>مرور مباحث ضعیف قبل از آزمون</p>
-                  </div>
-                  <span className="prep-status">برنامه‌ریزی نشده</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="panel exam-note-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>تحلیل و یادداشت</h2>
-                  <p>نکات مربوط به این آزمون</p>
-                </div>
-              </div>
-
-              <textarea
-                placeholder="هدف، وضعیت آمادگی، نکات مهم یا تحلیل نتیجه را اینجا بنویس..."
-                rows={5}
-              />
-
-              <button>ذخیره یادداشت</button>
-            </div>
-          </section>
-        )}
-      </section>
+          </div>
+        </div>
+      )}
     </main>
   );
-}
+    }
