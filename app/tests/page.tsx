@@ -1,566 +1,731 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  FileText,
+  Plus,
+  Trash2,
+  X,
+  Target,
+  Clock3,
+  TrendingUp,
+  CheckCircle2,
+} from "lucide-react";
 
-type MistakeType =
-  | "carelessness"
-  | "concept"
-  | "forgetting"
-  | "time"
-  | "uncertain"
-  | "calculation"
-  | "unknown"
-  | "other";
-
-type Test = {
-  id: number;
-  title: string;
-  subject: string;
-  topic: string;
-  date: string;
-  questions: number;
-  correct: number;
-  wrong: number;
-  blank: number;
-  duration: number;
-  difficulty: "easy" | "medium" | "hard";
-  notes: string;
-  mistakes: Record<MistakeType, number>;
+type Subject = {
+  id: string;
+  name: string;
 };
 
-const initialTests: Test[] = [
-  {
-    id: 1,
-    title: "تست زیست فصل تنظیم عصبی",
-    subject: "زیست‌شناسی",
-    topic: "تنظیم عصبی",
-    date: "۱۴۰۵/۰۶/۲۱",
-    questions: 20,
-    correct: 16,
-    wrong: 3,
-    blank: 1,
-    duration: 25,
-    difficulty: "medium",
-    notes: "در بخش‌های مربوط به نورون نیاز به مرور دارم.",
-    mistakes: {
-      carelessness: 1,
-      concept: 1,
-      forgetting: 1,
-      time: 0,
-      uncertain: 0,
-      calculation: 0,
-      unknown: 0,
-      other: 0,
-    },
-  },
-  {
-    id: 2,
-    title: "آزمون شیمی",
-    subject: "شیمی",
-    topic: "ساختار اتم",
-    date: "۱۴۰۵/۰۶/۲۰",
-    questions: 25,
-    correct: 19,
-    wrong: 4,
-    blank: 2,
-    duration: 35,
-    difficulty: "hard",
-    notes: "محاسبات را باید بیشتر تمرین کنم.",
-    mistakes: {
-      carelessness: 1,
-      concept: 1,
-      forgetting: 0,
-      time: 1,
-      uncertain: 0,
-      calculation: 1,
-      unknown: 0,
-      other: 0,
-    },
-  },
-];
-
-const mistakeLabels: Record<MistakeType, string> = {
-  carelessness: "بی‌دقتی",
-  concept: "ضعف مفهومی",
-  forgetting: "فراموشی",
-  time: "کمبود زمان",
-  uncertain: "شک و تردید",
-  calculation: "اشتباه محاسباتی",
-  unknown: "مبحث ناشناخته",
-  other: "سایر",
+type Test = {
+  id: string;
+  name: string;
+  subject_id: string | null;
+  topic: string | null;
+  test_date: string;
+  score: number | null;
+  max_score: number | null;
+  percentage: number | null;
+  question_count: number | null;
+  correct_count: number | null;
+  wrong_count: number | null;
+  blank_count: number | null;
+  duration_minutes: number | null;
+  target_percentage: number | null;
+  notes: string | null;
 };
 
 export default function TestsPage() {
-  const [tests, setTests] = useState<Test[]>(initialTests);
-  const [selectedId, setSelectedId] = useState(1);
-  const [subjectFilter, setSubjectFilter] = useState("همه");
-  const [search, setSearch] = useState("");
+  const supabase = createClient();
 
-  const subjects = [
-    "همه",
-    ...Array.from(new Set(tests.map((test) => test.subject))),
-  ];
+  const [tests, setTests] = useState<Test[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredTests = useMemo(() => {
-    return tests.filter((test) => {
-      const matchesSubject =
-        subjectFilter === "همه" || test.subject === subjectFilter;
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-      const text =
-        `${test.title} ${test.subject} ${test.topic}`.toLowerCase();
+  const [name, setName] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [topic, setTopic] = useState("");
+  const [testDate, setTestDate] = useState("");
+  const [score, setScore] = useState("");
+  const [maxScore, setMaxScore] = useState("");
+  const [percentage, setPercentage] = useState("");
+  const [questionCount, setQuestionCount] = useState("");
+  const [correctCount, setCorrectCount] = useState("");
+  const [wrongCount, setWrongCount] = useState("");
+  const [blankCount, setBlankCount] = useState("");
+  const [duration, setDuration] = useState("");
+  const [targetPercentage, setTargetPercentage] =
+    useState("");
+  const [notes, setNotes] = useState("");
 
-      const matchesSearch = text.includes(search.toLowerCase());
+  async function loadData() {
+    setLoading(true);
 
-      return matchesSubject && matchesSearch;
+    const [testsResult, subjectsResult] =
+      await Promise.all([
+        supabase
+          .from("tests")
+          .select(
+            "id,name,subject_id,topic,test_date,score,max_score,percentage,question_count,correct_count,wrong_count,blank_count,duration_minutes,target_percentage,notes"
+          )
+          .order("test_date", { ascending: false }),
+
+        supabase
+          .from("subjects")
+          .select("id,name")
+          .order("name"),
+      ]);
+
+    if (testsResult.data) {
+      setTests(testsResult.data);
+    }
+
+    if (subjectsResult.data) {
+      setSubjects(subjectsResult.data);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  function resetForm() {
+    setName("");
+    setSubjectId("");
+    setTopic("");
+    setTestDate("");
+    setScore("");
+    setMaxScore("");
+    setPercentage("");
+    setQuestionCount("");
+    setCorrectCount("");
+    setWrongCount("");
+    setBlankCount("");
+    setDuration("");
+    setTargetPercentage("");
+    setNotes("");
+  }
+
+  async function addTest() {
+    if (!name.trim() || !testDate || adding) return;
+
+    setAdding(true);
+
+    const { error } = await supabase.from("tests").insert({
+      name: name.trim(),
+      subject_id: subjectId || null,
+      topic: topic.trim() || null,
+      test_date: testDate,
+      score: score ? Number(score) : null,
+      max_score: maxScore ? Number(maxScore) : null,
+      percentage: percentage
+        ? Number(percentage)
+        : null,
+      question_count: questionCount
+        ? Number(questionCount)
+        : null,
+      correct_count: correctCount
+        ? Number(correctCount)
+        : null,
+      wrong_count: wrongCount
+        ? Number(wrongCount)
+        : null,
+      blank_count: blankCount
+        ? Number(blankCount)
+        : null,
+      duration_minutes: duration
+        ? Number(duration)
+        : null,
+      target_percentage: targetPercentage
+        ? Number(targetPercentage)
+        : null,
+      notes: notes.trim() || null,
     });
-  }, [tests, subjectFilter, search]);
 
-  const selectedTest =
-    tests.find((test) => test.id === selectedId) ?? filteredTests[0];
+    if (!error) {
+      resetForm();
+      setShowAdd(false);
+      await loadData();
+    } else {
+      console.error(error);
+      alert("ثبت آزمون با خطا مواجه شد.");
+    }
+
+    setAdding(false);
+  }
+
+  async function deleteTest(id: string) {
+    const test = tests.find((item) => item.id === id);
+
+    if (!test) return;
+
+    const confirmed = window.confirm(
+      `آزمون «${test.name}» حذف شود؟`
+    );
+
+    if (!confirmed) return;
+
+    await supabase
+      .from("tests")
+      .delete()
+      .eq("id", id);
+
+    await loadData();
+  }
+
+  function getSubjectName(subjectId: string | null) {
+    if (!subjectId) return "بدون درس";
+
+    return (
+      subjects.find(
+        (subject) => subject.id === subjectId
+      )?.name || "بدون درس"
+    );
+  }
+
+  function getPercentage(test: Test) {
+    if (test.percentage !== null) {
+      return Number(test.percentage);
+    }
+
+    if (
+      test.score !== null &&
+      test.max_score !== null &&
+      test.max_score > 0
+    ) {
+      return (
+        (Number(test.score) /
+          Number(test.max_score)) *
+        100
+      );
+    }
+
+    if (
+      test.correct_count !== null &&
+      test.question_count !== null &&
+      test.question_count > 0
+    ) {
+      return (
+        (Number(test.correct_count) /
+          Number(test.question_count)) *
+        100
+      );
+    }
+
+    return null;
+  }
+
+  const averagePercentage = useMemo(() => {
+    const values = tests
+      .map(getPercentage)
+      .filter(
+        (value): value is number => value !== null
+      );
+
+    if (!values.length) return null;
+
+    return (
+      values.reduce((sum, value) => sum + value, 0) /
+      values.length
+    );
+  }, [tests]);
 
   const totalQuestions = tests.reduce(
-    (sum, test) => sum + test.questions,
+    (sum, test) =>
+      sum + Number(test.question_count || 0),
     0
   );
 
   const totalCorrect = tests.reduce(
-    (sum, test) => sum + test.correct,
+    (sum, test) =>
+      sum + Number(test.correct_count || 0),
     0
   );
 
-  const totalWrong = tests.reduce(
-    (sum, test) => sum + test.wrong,
-    0
-  );
-
-  const averagePercentage = totalQuestions
-    ? Math.round((totalCorrect / totalQuestions) * 100)
-    : 0;
-
-  function getPercentage(test: Test) {
-    if (!test.questions) return 0;
-    return Math.round((test.correct / test.questions) * 100);
-  }
-
-  function getAccuracy(test: Test) {
-    const answered = test.correct + test.wrong;
-
-    if (!answered) return 0;
-
-    return Math.round((test.correct / answered) * 100);
-  }
-
-  function difficultyLabel(
-    difficulty: Test["difficulty"]
-  ) {
-    if (difficulty === "easy") return "آسان";
-    if (difficulty === "medium") return "متوسط";
-    return "سخت";
-  }
-
-  function addTest() {
-    const id =
-      tests.length > 0
-        ? Math.max(...tests.map((test) => test.id)) + 1
-        : 1;
-
-    const newTest: Test = {
-      id,
-      title: "آزمون جدید",
-      subject: "درس جدید",
-      topic: "مبحث مشخص نشده",
-      date: "۱۴۰۵/۰۶/۲۱",
-      questions: 20,
-      correct: 0,
-      wrong: 0,
-      blank: 20,
-      duration: 30,
-      difficulty: "medium",
-      notes: "",
-      mistakes: {
-        carelessness: 0,
-        concept: 0,
-        forgetting: 0,
-        time: 0,
-        uncertain: 0,
-        calculation: 0,
-        unknown: 0,
-        other: 0,
-      },
-    };
-
-    setTests((current) => [newTest, ...current]);
-    setSelectedId(id);
-  }
-
-  function deleteTest(id: number) {
-    setTests((current) =>
-      current.filter((test) => test.id !== id)
-    );
-
-    if (selectedId === id) {
-      const next = tests.find((test) => test.id !== id);
-
-      if (next) {
-        setSelectedId(next.id);
-      }
-    }
-  }
+  const accuracy =
+    totalQuestions > 0
+      ? (totalCorrect / totalQuestions) * 100
+      : null;
 
   return (
-    <main className="tests-page">
-      <header className="tests-header">
+    <main className="page-container">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">TEST ANALYTICS</span>
-          <h1>آزمون و تست</h1>
-          <p>
-            ثبت عملکرد، بررسی اشتباهات و تحلیل روند تست‌زنی
+          <div className="page-kicker">
+            ثبت و تحلیل آزمون
+          </div>
+
+          <h1>آزمون‌ها</h1>
+
+          <p className="page-subtitle">
+            نتیجه آزمون‌ها، تعداد سؤالات، زمان و درصدت را
+            ثبت و پیگیری کن.
           </p>
         </div>
 
-        <button onClick={addTest}>+ ثبت آزمون</button>
-      </header>
+        <button
+          className="primary-button"
+          onClick={() => setShowAdd(true)}
+        >
+          <Plus size={18} />
+          ثبت آزمون
+        </button>
+      </div>
 
-      <section className="test-stats">
-        <div className="panel test-stat">
-          <span>تعداد آزمون‌ها</span>
-          <strong>{tests.length}</strong>
-          <small>آزمون ثبت‌شده</small>
-        </div>
-
-        <div className="panel test-stat">
-          <span>تعداد سؤالات</span>
-          <strong>{totalQuestions}</strong>
-          <small>سؤال پاسخ‌داده‌شده</small>
-        </div>
-
-        <div className="panel test-stat">
-          <span>میانگین درصد</span>
-          <strong>{averagePercentage}٪</strong>
-          <small>بر اساس پاسخ‌های صحیح</small>
-        </div>
-
-        <div className="panel test-stat">
-          <span>پاسخ غلط</span>
-          <strong>{totalWrong}</strong>
-          <small>نیازمند تحلیل</small>
-        </div>
-      </section>
-
-      <section className="tests-toolbar panel">
-        <div className="test-search">
-          <span>⌕</span>
-
-          <input
-            value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
-            placeholder="جستجوی آزمون، درس یا مبحث..."
-          />
-        </div>
-
-        <div className="test-filters">
-          {subjects.map((subject) => (
-            <button
-              key={subject}
-              className={
-                subjectFilter === subject ? "active" : ""
-              }
-              onClick={() => setSubjectFilter(subject)}
-            >
-              {subject}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="tests-layout">
-        <aside className="panel tests-list-panel">
-          <div className="panel-header">
-            <div>
-              <h2>آزمون‌ها</h2>
-              <p>{filteredTests.length} مورد</p>
-            </div>
+      <section className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <FileText size={21} />
           </div>
 
-          <div className="tests-list">
-            {filteredTests.map((test) => (
-              <button
+          <div>
+            <span>تعداد آزمون</span>
+            <strong>{tests.length}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <TrendingUp size={21} />
+          </div>
+
+          <div>
+            <span>میانگین درصد</span>
+            <strong>
+              {averagePercentage === null
+                ? "—"
+                : `${averagePercentage.toFixed(1)}٪`}
+            </strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Target size={21} />
+          </div>
+
+          <div>
+            <span>کل سؤالات</span>
+            <strong>{totalQuestions}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <CheckCircle2 size={21} />
+          </div>
+
+          <div>
+            <span>دقت پاسخ‌گویی</span>
+            <strong>
+              {accuracy === null
+                ? "—"
+                : `${accuracy.toFixed(1)}٪`}
+            </strong>
+          </div>
+        </div>
+      </section>
+
+      {loading ? (
+        <div className="empty-card">
+          <p>در حال دریافت اطلاعات...</p>
+        </div>
+      ) : tests.length === 0 ? (
+        <div className="empty-card">
+          <FileText size={42} />
+
+          <h2>هنوز آزمونی ثبت نشده</h2>
+
+          <p>
+            نتیجه اولین آزمونت را ثبت کن تا تحلیل عملکرد
+            از همین‌جا شروع شود.
+          </p>
+
+          <button
+            className="primary-button"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus size={18} />
+            ثبت اولین آزمون
+          </button>
+        </div>
+      ) : (
+        <section className="exam-list">
+          {tests.map((test) => {
+            const testPercentage = getPercentage(test);
+
+            return (
+              <article
+                className="exam-card"
                 key={test.id}
-                className={`test-list-item ${
-                  selectedTest?.id === test.id
-                    ? "active"
-                    : ""
-                }`}
-                onClick={() => setSelectedId(test.id)}
               >
-                <div className="test-list-main">
-                  <strong>{test.title}</strong>
-                  <span>{test.subject}</span>
-                  <small>
-                    {test.date} · {test.topic}
-                  </small>
+                <div className="exam-card-main">
+                  <div className="exam-date-box">
+                    <FileText size={20} />
+
+                    <strong>
+                      {new Date(
+                        test.test_date
+                      ).toLocaleDateString("fa-IR")}
+                    </strong>
+                  </div>
+
+                  <div className="exam-info">
+                    <div className="exam-title-row">
+                      <h2>{test.name}</h2>
+
+                      {testPercentage !== null && (
+                        <span className="status-badge status-upcoming">
+                          {testPercentage.toFixed(1)}٪
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="exam-meta">
+                      <span>
+                        {getSubjectName(
+                          test.subject_id
+                        )}
+                      </span>
+
+                      {test.topic && (
+                        <span>
+                          مبحث: {test.topic}
+                        </span>
+                      )}
+
+                      {test.question_count !== null && (
+                        <span>
+                          {test.question_count} سؤال
+                        </span>
+                      )}
+
+                      {test.duration_minutes !== null && (
+                        <span>
+                          <Clock3 size={14} />
+                          {test.duration_minutes} دقیقه
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="test-result-grid">
+                      <div>
+                        <span>درست</span>
+                        <strong>
+                          {test.correct_count ?? "—"}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>غلط</span>
+                        <strong>
+                          {test.wrong_count ?? "—"}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>نزده</span>
+                        <strong>
+                          {test.blank_count ?? "—"}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>هدف</span>
+                        <strong>
+                          {test.target_percentage !== null
+                            ? `${test.target_percentage}٪`
+                            : "—"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {test.notes && (
+                      <p className="exam-notes">
+                        {test.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    className="icon-button danger"
+                    title="حذف آزمون"
+                    onClick={() =>
+                      deleteTest(test.id)
+                    }
+                  >
+                    <Trash2 size={17} />
+                  </button>
                 </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
 
-                <div className="test-list-score">
-                  <strong>{getPercentage(test)}٪</strong>
-                  <span>{test.questions} سؤال</span>
-                </div>
-              </button>
-            ))}
-
-            {filteredTests.length === 0 && (
-              <div className="test-empty">
-                آزمونی پیدا نشد.
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {selectedTest && (
-          <section className="test-details">
-            <div className="panel test-detail-header">
+      {showAdd && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowAdd(false)}
+        >
+          <div
+            className="modal-card"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="modal-header">
               <div>
-                <span className="test-subject-badge">
-                  {selectedTest.subject}
-                </span>
-
-                <h2>{selectedTest.title}</h2>
-
+                <h2>ثبت آزمون</h2>
                 <p>
-                  {selectedTest.topic} · {selectedTest.date}
+                  اطلاعات آزمون را وارد کن.
                 </p>
               </div>
 
               <button
-                className="delete-test"
-                onClick={() =>
-                  deleteTest(selectedTest.id)
-                }
+                className="icon-button"
+                onClick={() => setShowAdd(false)}
               >
-                حذف آزمون
+                <X size={19} />
               </button>
             </div>
 
-            <div className="test-result-grid">
-              <div className="panel result-card">
-                <span>درصد</span>
-                <strong>
-                  {getPercentage(selectedTest)}٪
-                </strong>
-                <small>پاسخ صحیح</small>
-              </div>
+            <div className="form-grid">
+              <label className="form-label">
+                نام آزمون
+                <input
+                  className="form-input"
+                  value={name}
+                  onChange={(e) =>
+                    setName(e.target.value)
+                  }
+                  placeholder="مثلاً آزمون زیست فصل ۱"
+                  autoFocus
+                />
+              </label>
 
-              <div className="panel result-card">
-                <span>دقت</span>
-                <strong>
-                  {getAccuracy(selectedTest)}٪
-                </strong>
-                <small>از سؤالات پاسخ‌داده‌شده</small>
-              </div>
+              <label className="form-label">
+                درس
+                <select
+                  className="form-input"
+                  value={subjectId}
+                  onChange={(e) =>
+                    setSubjectId(e.target.value)
+                  }
+                >
+                  <option value="">
+                    انتخاب درس
+                  </option>
 
-              <div className="panel result-card">
-                <span>صحیح</span>
-                <strong>{selectedTest.correct}</strong>
-                <small>پاسخ صحیح</small>
-              </div>
+                  {subjects.map((subject) => (
+                    <option
+                      key={subject.id}
+                      value={subject.id}
+                    >
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              <div className="panel result-card">
-                <span>غلط</span>
-                <strong>{selectedTest.wrong}</strong>
-                <small>پاسخ اشتباه</small>
-              </div>
+              <label className="form-label">
+                مبحث
+                <input
+                  className="form-input"
+                  value={topic}
+                  onChange={(e) =>
+                    setTopic(e.target.value)
+                  }
+                  placeholder="مثلاً تنظیم عصبی"
+                />
+              </label>
 
-              <div className="panel result-card">
-                <span>نزده</span>
-                <strong>{selectedTest.blank}</strong>
-                <small>بدون پاسخ</small>
-              </div>
+              <label className="form-label">
+                تاریخ آزمون
+                <input
+                  className="form-input"
+                  type="date"
+                  value={testDate}
+                  onChange={(e) =>
+                    setTestDate(e.target.value)
+                  }
+                />
+              </label>
 
-              <div className="panel result-card">
-                <span>زمان</span>
-                <strong>{selectedTest.duration}</strong>
-                <small>دقیقه</small>
-              </div>
+              <label className="form-label">
+                درصد
+                <input
+                  className="form-input"
+                  type="number"
+                  value={percentage}
+                  onChange={(e) =>
+                    setPercentage(e.target.value)
+                  }
+                  placeholder="مثلاً 75"
+                />
+              </label>
+
+              <label className="form-label">
+                هدف درصد
+                <input
+                  className="form-input"
+                  type="number"
+                  value={targetPercentage}
+                  onChange={(e) =>
+                    setTargetPercentage(
+                      e.target.value
+                    )
+                  }
+                  placeholder="مثلاً 80"
+                />
+              </label>
+
+              <label className="form-label">
+                تعداد سؤالات
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={questionCount}
+                  onChange={(e) =>
+                    setQuestionCount(
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                درست
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={correctCount}
+                  onChange={(e) =>
+                    setCorrectCount(
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                غلط
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={wrongCount}
+                  onChange={(e) =>
+                    setWrongCount(
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                نزده
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={blankCount}
+                  onChange={(e) =>
+                    setBlankCount(
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                زمان آزمون (دقیقه)
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  value={duration}
+                  onChange={(e) =>
+                    setDuration(
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                نمره
+                <input
+                  className="form-input"
+                  type="number"
+                  value={score}
+                  onChange={(e) =>
+                    setScore(e.target.value)
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                حداکثر نمره
+                <input
+                  className="form-input"
+                  type="number"
+                  value={maxScore}
+                  onChange={(e) =>
+                    setMaxScore(
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="form-label full-width">
+                یادداشت و تحلیل شخصی
+                <textarea
+                  className="form-input form-textarea"
+                  rows={3}
+                  value={notes}
+                  onChange={(e) =>
+                    setNotes(e.target.value)
+                  }
+                  placeholder="مثلاً بی‌دقتی در محاسبات..."
+                />
+              </label>
             </div>
 
-            <div className="test-analysis-grid">
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>تحلیل پاسخ‌ها</h2>
-                    <p>توزیع عملکرد در این آزمون</p>
-                  </div>
-                </div>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                onClick={() => setShowAdd(false)}
+              >
+                انصراف
+              </button>
 
-                <div className="answer-bars">
-                  <div>
-                    <div className="answer-bar-label">
-                      <span>صحیح</span>
-                      <strong>
-                        {selectedTest.correct}
-                      </strong>
-                    </div>
-
-                    <div className="answer-bar">
-                      <div
-                        style={{
-                          width: `${
-                            (selectedTest.correct /
-                              selectedTest.questions) *
-                            100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="answer-bar-label">
-                      <span>غلط</span>
-                      <strong>
-                        {selectedTest.wrong}
-                      </strong>
-                    </div>
-
-                    <div className="answer-bar">
-                      <div
-                        style={{
-                          width: `${
-                            (selectedTest.wrong /
-                              selectedTest.questions) *
-                            100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="answer-bar-label">
-                      <span>نزده</span>
-                      <strong>
-                        {selectedTest.blank}
-                      </strong>
-                    </div>
-
-                    <div className="answer-bar">
-                      <div
-                        style={{
-                          width: `${
-                            (selectedTest.blank /
-                              selectedTest.questions) *
-                            100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>اطلاعات آزمون</h2>
-                    <p>جزئیات ثبت‌شده</p>
-                  </div>
-                </div>
-
-                <div className="test-info-list">
-                  <div>
-                    <span>درس</span>
-                    <strong>
-                      {selectedTest.subject}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>مبحث</span>
-                    <strong>
-                      {selectedTest.topic}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>تعداد سؤال</span>
-                    <strong>
-                      {selectedTest.questions}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>سطح سختی</span>
-                    <strong>
-                      {difficultyLabel(
-                        selectedTest.difficulty
-                      )}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>زمان</span>
-                    <strong>
-                      {selectedTest.duration} دقیقه
-                    </strong>
-                  </div>
-                </div>
-              </div>
+              <button
+                className="primary-button"
+                disabled={
+                  adding ||
+                  !name.trim() ||
+                  !testDate
+                }
+                onClick={addTest}
+              >
+                {adding
+                  ? "در حال ثبت..."
+                  : "ثبت آزمون"}
+              </button>
             </div>
-
-            <div className="panel mistakes-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>دسته‌بندی اشتباهات</h2>
-                  <p>
-                    علت اشتباهات را ثبت و الگوهای تکرارشونده
-                    را پیدا کن
-                  </p>
-                </div>
-              </div>
-
-              <div className="mistakes-grid">
-                {(
-                  Object.keys(
-                    mistakeLabels
-                  ) as MistakeType[]
-                ).map((type) => (
-                  <div
-                    className="mistake-item"
-                    key={type}
-                  >
-                    <span>{mistakeLabels[type]}</span>
-
-                    <strong>
-                      {selectedTest.mistakes[type]}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="panel test-note-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>تحلیل شخصی</h2>
-                  <p>
-                    نکات و نتیجه‌گیری خودت از آزمون
-                  </p>
-                </div>
-              </div>
-
-              <textarea
-                defaultValue={selectedTest.notes}
-                rows={5}
-                placeholder="چه چیزی خوب بود؟ چه چیزی نیاز به مرور یا تمرین دارد؟"
-              />
-
-              <button>ذخیره تحلیل</button>
-            </div>
-          </section>
-        )}
-      </section>
+          </div>
+        </div>
+      )}
     </main>
   );
-                }
+}
