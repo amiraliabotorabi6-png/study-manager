@@ -2,32 +2,45 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 export default function RegisterPage() {
+  const supabase = createClient();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] =
+    useState("");
 
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] =
+    useState(false);
+
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
 
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
+    setSuccess(false);
 
-    if (!name.trim()) {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName) {
       setError("لطفاً نام خود را وارد کن.");
       return;
     }
 
-    if (!email.trim()) {
+    if (!cleanEmail) {
       setError("لطفاً ایمیل خود را وارد کن.");
       return;
     }
@@ -60,14 +73,124 @@ export default function RegisterPage() {
 
     setLoading(true);
 
-    // اتصال واقعی به Supabase Auth در مرحله احراز هویت اضافه می‌شود.
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { error: signUpError } =
+        await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: {
+            data: {
+              full_name: cleanName,
+            },
+            emailRedirectTo:
+              `${window.location.origin}/api/auth/callback?next=/dashboard`,
+          },
+        });
 
+      if (signUpError) {
+        if (
+          signUpError.message
+            .toLowerCase()
+            .includes("already registered")
+        ) {
+          setError(
+            "این ایمیل قبلاً ثبت شده است. وارد حساب شو یا رمز عبور را بازیابی کن."
+          );
+        } else {
+          setError(signUpError.message);
+        }
+
+        return;
+      }
+
+      setSuccess(true);
+    } catch {
       setError(
-        "ثبت‌نام هنوز فعال نشده است. در مرحله بعد به Supabase متصل می‌شویم."
+        "خطایی در ارتباط با سرور رخ داد. دوباره تلاش کن."
       );
-    }, 700);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (success) {
+    return (
+      <main className="auth-page">
+        <div className="auth-background">
+          <div className="auth-glow auth-glow-one" />
+          <div className="auth-glow auth-glow-two" />
+        </div>
+
+        <section className="auth-container">
+          <div className="auth-brand">
+            <div className="auth-logo">S</div>
+
+            <div>
+              <strong>Study Manager</strong>
+
+              <span>
+                سیستم مدیریت هوشمند مطالعه
+              </span>
+            </div>
+          </div>
+
+          <div className="auth-card">
+            <div className="auth-success">
+              <div className="auth-success-icon">
+                ✓
+              </div>
+
+              <span className="auth-label">
+                ACCOUNT CREATED
+              </span>
+
+              <h1>
+                حساب ساخته شد
+              </h1>
+
+              <p>
+                یک ایمیل تأیید به آدرس زیر ارسال شده
+                است. ایمیل را باز کن و حساب خودت را
+                تأیید کن.
+              </p>
+
+              <div className="auth-email-preview">
+                <span>
+                  ایمیل ثبت‌شده
+                </span>
+
+                <strong dir="ltr">
+                  {email}
+                </strong>
+              </div>
+
+              <Link
+                href="/verify-email"
+                className="auth-submit"
+              >
+                رفتن به تأیید ایمیل
+                <span>←</span>
+              </Link>
+
+              <Link
+                href="/login"
+                className="auth-success-link"
+              >
+                بازگشت به صفحه ورود
+              </Link>
+            </div>
+          </div>
+
+          <div className="auth-footer">
+            <span>Study Manager</span>
+            <span>•</span>
+            <span>
+              مدیریت مطالعه، ساده و دقیق
+            </span>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -189,11 +312,6 @@ export default function RegisterPage() {
                       (current) => !current
                     )
                   }
-                  aria-label={
-                    showPassword
-                      ? "مخفی کردن رمز عبور"
-                      : "نمایش رمز عبور"
-                  }
                 >
                   {showPassword ? "◉" : "○"}
                 </button>
@@ -236,11 +354,6 @@ export default function RegisterPage() {
                       (current) => !current
                     )
                   }
-                  aria-label={
-                    showConfirmPassword
-                      ? "مخفی کردن رمز عبور"
-                      : "نمایش رمز عبور"
-                  }
                 >
                   {showConfirmPassword ? "◉" : "○"}
                 </button>
@@ -257,14 +370,8 @@ export default function RegisterPage() {
               />
 
               <span>
-                با{" "}
-                <button
-                  type="button"
-                  className="inline-link"
-                >
-                  قوانین استفاده
-                </button>{" "}
-                و سیاست حفظ حریم خصوصی موافقم.
+                با قوانین استفاده و سیاست حفظ حریم
+                خصوصی موافقم.
               </span>
             </label>
 
@@ -311,9 +418,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="auth-footer">
-          <span>
-            Study Manager
-          </span>
+          <span>Study Manager</span>
 
           <span>•</span>
 
