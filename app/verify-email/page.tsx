@@ -2,25 +2,51 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 export default function VerifyEmailPage() {
-  const [email, setEmail] = useState("example@email.com");
+  const supabase = createClient();
+
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  function resendEmail() {
+  async function resendVerification() {
+    setError("");
+    setSent(false);
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setError("لطفاً ایمیل خود را وارد کن.");
+      return;
+    }
+
     setLoading(true);
-    setMessage("");
 
-    // اتصال واقعی به Supabase Auth در مرحله احراز هویت اضافه می‌شود.
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { error: resendError } =
+        await supabase.auth.resend({
+          type: "signup",
+          email: cleanEmail,
+        });
+
+      if (resendError) {
+        setError(
+          "ارسال دوباره ایمیل تأیید انجام نشد. دوباره تلاش کن."
+        );
+        return;
+      }
+
       setSent(true);
-      setMessage(
-        "لینک تأیید ایمیل دوباره ارسال شد."
+    } catch {
+      setError(
+        "خطایی در ارتباط با سرور رخ داد. دوباره تلاش کن."
       );
-    }, 800);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -44,13 +70,13 @@ export default function VerifyEmailPage() {
         </div>
 
         <div className="auth-card">
-          <div className="verify-content">
-            <div className="verify-icon">
-              ✉
+          <div className="auth-success">
+            <div className="auth-success-icon">
+              @
             </div>
 
             <span className="auth-label">
-              VERIFY EMAIL
+              EMAIL VERIFICATION
             </span>
 
             <h1>
@@ -58,54 +84,45 @@ export default function VerifyEmailPage() {
             </h1>
 
             <p>
-              برای فعال شدن حساب کاربری، لینک تأیید را
-              از طریق ایمیل باز کن.
+              برای فعال‌سازی حساب، ایمیل تأیید ارسال‌شده
+              از طرف Study Manager را باز کن و روی لینک
+              تأیید بزن.
             </p>
 
             <div className="auth-email-preview">
               <span>
-                ایمیل ثبت‌شده
+                ایمیل حساب
               </span>
 
-              <strong dir="ltr">
-                {email}
-              </strong>
+              <input
+                type="email"
+                dir="ltr"
+                placeholder="example@email.com"
+                value={email}
+                onChange={(event) =>
+                  setEmail(event.target.value)
+                }
+              />
             </div>
 
-            <div className="verify-checklist">
-              <div>
-                <span>✓</span>
-                <p>
-                  صندوق ورودی ایمیل را بررسی کن.
-                </p>
-              </div>
-
-              <div>
-                <span>✓</span>
-                <p>
-                  اگر ایمیل را نمی‌بینی، پوشه Spam را
-                  بررسی کن.
-                </p>
-              </div>
-
-              <div>
-                <span>✓</span>
-                <p>
-                  روی لینک تأیید داخل ایمیل کلیک کن.
-                </p>
-              </div>
-            </div>
-
-            {message && (
+            {sent && (
               <div className="auth-success-message">
-                <span>✓</span>
-                <p>{message}</p>
+                ایمیل تأیید دوباره ارسال شد.
+              </div>
+            )}
+
+            {error && (
+              <div className="auth-error">
+                <span>!</span>
+
+                <p>{error}</p>
               </div>
             )}
 
             <button
+              type="button"
               className="auth-submit"
-              onClick={resendEmail}
+              onClick={resendVerification}
               disabled={loading}
             >
               {loading ? (
@@ -113,43 +130,25 @@ export default function VerifyEmailPage() {
                   <span className="auth-spinner" />
                   در حال ارسال...
                 </>
-              ) : sent ? (
-                <>
-                  ارسال دوباره ایمیل
-                  <span>↻</span>
-                </>
               ) : (
                 <>
-                  ارسال مجدد لینک تأیید
+                  ارسال دوباره ایمیل تأیید
                   <span>↻</span>
                 </>
               )}
             </button>
 
-            <div className="verify-actions">
-              <Link href="/login">
-                بازگشت به ورود
-              </Link>
-
-              <span>•</span>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail("");
-                  setMessage("");
-                }}
-              >
-                استفاده از ایمیل دیگر
-              </button>
-            </div>
+            <Link
+              href="/login"
+              className="auth-success-link"
+            >
+              بازگشت به صفحه ورود
+            </Link>
           </div>
         </div>
 
         <div className="auth-footer">
-          <span>
-            Study Manager
-          </span>
+          <span>Study Manager</span>
 
           <span>•</span>
 
