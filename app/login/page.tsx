@@ -2,34 +2,86 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  const supabase = createClient();
+  const searchParams = useSearchParams();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(true);
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const redirectTo = searchParams.get("redirect") || "/dashboard";
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
 
-    if (!email.trim() || !password) {
-      setError("لطفاً ایمیل و رمز عبور را وارد کن.");
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setError("لطفاً ایمیل خود را وارد کن.");
+      return;
+    }
+
+    if (!password) {
+      setError("لطفاً رمز عبور خود را وارد کن.");
       return;
     }
 
     setLoading(true);
 
-    // اتصال واقعی به Supabase در مرحله احراز هویت اضافه می‌شود.
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+
+      if (signInError) {
+        if (
+          signInError.message
+            .toLowerCase()
+            .includes("email not confirmed")
+        ) {
+          setError(
+            "ایمیل حساب هنوز تأیید نشده است. ابتدا ایمیل تأیید را باز کن."
+          );
+        } else {
+          setError(
+            "ایمیل یا رمز عبور اشتباه است."
+          );
+        }
+
+        return;
+      }
+
+      if (!rememberMe) {
+        sessionStorage.setItem(
+          "study-manager-session",
+          "temporary"
+        );
+      }
+
+      window.location.href = redirectTo.startsWith("/")
+        ? redirectTo
+        : "/dashboard";
+    } catch {
       setError(
-        "احراز هویت هنوز فعال نشده است. در مرحله بعد به Supabase متصل می‌شویم."
+        "خطایی در ارتباط با سرور رخ داد. دوباره تلاش کن."
       );
-    }, 700);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -45,7 +97,10 @@ export default function LoginPage() {
 
           <div>
             <strong>Study Manager</strong>
-            <span>سیستم مدیریت هوشمند مطالعه</span>
+
+            <span>
+              سیستم مدیریت هوشمند مطالعه
+            </span>
           </div>
         </div>
 
@@ -55,10 +110,10 @@ export default function LoginPage() {
               WELCOME BACK
             </span>
 
-            <h1>خوش برگشتی 👋</h1>
+            <h1>خوش برگشتی</h1>
 
             <p>
-              برای ادامه، وارد حساب کاربری خودت شو.
+              برای ادامه وارد حساب کاربری خودت شو.
             </p>
           </div>
 
@@ -67,7 +122,7 @@ export default function LoginPage() {
             onSubmit={handleSubmit}
           >
             <div className="auth-field">
-              <label htmlFor="email">
+              <label htmlFor="login-email">
                 ایمیل
               </label>
 
@@ -77,7 +132,7 @@ export default function LoginPage() {
                 </span>
 
                 <input
-                  id="email"
+                  id="login-email"
                   type="email"
                   dir="ltr"
                   autoComplete="email"
@@ -91,15 +146,9 @@ export default function LoginPage() {
             </div>
 
             <div className="auth-field">
-              <div className="auth-label-row">
-                <label htmlFor="password">
-                  رمز عبور
-                </label>
-
-                <Link href="/forgot-password">
-                  فراموشی رمز عبور؟
-                </Link>
-              </div>
+              <label htmlFor="login-password">
+                رمز عبور
+              </label>
 
               <div className="auth-input-wrapper">
                 <span className="auth-input-icon">
@@ -107,7 +156,7 @@ export default function LoginPage() {
                 </span>
 
                 <input
-                  id="password"
+                  id="login-password"
                   type={
                     showPassword
                       ? "text"
@@ -115,7 +164,7 @@ export default function LoginPage() {
                   }
                   dir="ltr"
                   autoComplete="current-password"
-                  placeholder="رمز عبور"
+                  placeholder="رمز عبور خود را وارد کن"
                   value={password}
                   onChange={(event) =>
                     setPassword(event.target.value)
@@ -141,23 +190,32 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <label className="remember-row">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(event) =>
-                  setRemember(event.target.checked)
-                }
-              />
+            <div className="login-options">
+              <label className="remember-row">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) =>
+                    setRememberMe(
+                      event.target.checked
+                    )
+                  }
+                />
 
-              <span>
-                مرا به خاطر بسپار
-              </span>
-            </label>
+                <span>
+                  مرا به خاطر بسپار
+                </span>
+              </label>
+
+              <Link href="/forgot-password">
+                رمز عبور را فراموش کرده‌ای؟
+              </Link>
+            </div>
 
             {error && (
               <div className="auth-error">
                 <span>!</span>
+
                 <p>{error}</p>
               </div>
             )}
@@ -187,7 +245,7 @@ export default function LoginPage() {
 
           <div className="auth-register">
             <span>
-              هنوز حساب کاربری نداری؟
+              هنوز حساب نداری؟
             </span>
 
             <Link href="/register">
@@ -197,9 +255,7 @@ export default function LoginPage() {
         </div>
 
         <div className="auth-footer">
-          <span>
-            Study Manager
-          </span>
+          <span>Study Manager</span>
 
           <span>•</span>
 
