@@ -1,669 +1,486 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-type TaskStatus = "todo" | "doing" | "done";
-type Priority = "high" | "medium" | "low";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  Check,
+  Clock3,
+  ListTodo,
+  Plus,
+  Trash2,
+  X,
+  AlertCircle,
+} from "lucide-react";
 
 type Task = {
-  id: number;
+  id: string;
   title: string;
-  subject: string;
-  date: string;
-  time: string;
-  duration: number;
-  priority: Priority;
-  status: TaskStatus;
-  notes: string;
+  description: string | null;
+  due_date: string | null;
+  priority: string | null;
+  status: string | null;
+  completed_at: string | null;
 };
 
-const initialTasks: Task[] = [
-  {
-    id: 1,
-    title: "مطالعه گفتار اول زیست",
-    subject: "زیست‌شناسی",
-    date: "۱۴۰۵/۰۶/۲۱",
-    time: "۱۰:۰۰",
-    duration: 60,
-    priority: "high",
-    status: "doing",
-    notes: "مطالعه دقیق متن کتاب و شکل‌ها",
-  },
-  {
-    id: 2,
-    title: "حل تمرین‌های شیمی",
-    subject: "شیمی",
-    date: "۱۴۰۵/۰۶/۲۱",
-    time: "۱۲:۰۰",
-    duration: 45,
-    priority: "medium",
-    status: "todo",
-    notes: "تمرین‌های مشخص‌شده",
-  },
-  {
-    id: 3,
-    title: "تست تابع",
-    subject: "ریاضی",
-    date: "۱۴۰۵/۰۶/۲۱",
-    time: "۱۵:۳۰",
-    duration: 50,
-    priority: "high",
-    status: "todo",
-    notes: "۲۰ تست با تحلیل کامل",
-  },
-  {
-    id: 4,
-    title: "مرور لغات زبان",
-    subject: "زبان",
-    date: "۱۴۰۵/۰۶/۲۰",
-    time: "۱۸:۰۰",
-    duration: 25,
-    priority: "low",
-    status: "done",
-    notes: "مرور لغات جلسه قبل",
-  },
+const priorities = [
+  { value: "low", label: "کم" },
+  { value: "medium", label: "متوسط" },
+  { value: "high", label: "زیاد" },
+  { value: "urgent", label: "خیلی مهم" },
 ];
 
-const statusLabels: Record<TaskStatus, string> = {
-  todo: "انجام‌نشده",
-  doing: "در حال انجام",
-  done: "انجام‌شده",
-};
-
-const priorityLabels: Record<Priority, string> = {
-  high: "بالا",
-  medium: "متوسط",
-  low: "کم",
-};
-
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | TaskStatus
-  >("all");
-  const [priorityFilter, setPriorityFilter] = useState<
-    "all" | Priority
-  >("all");
-  const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState(1);
+  const supabase = createClient();
 
-  const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      const matchesStatus =
-        statusFilter === "all" || task.status === statusFilter;
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
 
-      const matchesPriority =
-        priorityFilter === "all" ||
-        task.priority === priorityFilter;
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-      const text =
-        `${task.title} ${task.subject} ${task.notes}`.toLowerCase();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [priority, setPriority] = useState("medium");
 
-      const matchesSearch = text.includes(search.toLowerCase());
+  async function loadTasks() {
+    setLoading(true);
 
-      return (
-        matchesStatus &&
-        matchesPriority &&
-        matchesSearch
-      );
-    });
-  }, [tasks, statusFilter, priorityFilter, search]);
-
-  const selectedTask =
-    tasks.find((task) => task.id === selectedId) ??
-    filteredTasks[0];
-
-  const completedCount = tasks.filter(
-    (task) => task.status === "done"
-  ).length;
-
-  const doingCount = tasks.filter(
-    (task) => task.status === "doing"
-  ).length;
-
-  const todoCount = tasks.filter(
-    (task) => task.status === "todo"
-  ).length;
-
-  const totalMinutes = tasks.reduce(
-    (sum, task) => sum + task.duration,
-    0
-  );
-
-  function addTask() {
-    const id =
-      tasks.length > 0
-        ? Math.max(...tasks.map((task) => task.id)) + 1
-        : 1;
-
-    const newTask: Task = {
-      id,
-      title: "وظیفه جدید",
-      subject: "درس جدید",
-      date: "۱۴۰۵/۰۶/۲۱",
-      time: "۲۰:۰۰",
-      duration: 30,
-      priority: "medium",
-      status: "todo",
-      notes: "",
-    };
-
-    setTasks((current) => [newTask, ...current]);
-    setSelectedId(id);
-  }
-
-  function updateStatus(
-    id: number,
-    status: TaskStatus
-  ) {
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === id ? { ...task, status } : task
+    const { data, error } = await supabase
+      .from("tasks")
+      .select(
+        "id,title,description,due_date,priority,status,completed_at"
       )
-    );
+      .order("due_date", {
+        ascending: true,
+        nullsFirst: false,
+      });
+
+    if (!error && data) {
+      setTasks(data);
+    }
+
+    setLoading(false);
   }
 
-  function deleteTask(id: number) {
-    setTasks((current) =>
-      current.filter((task) => task.id !== id)
-    );
+  useEffect(() => {
+    loadTasks();
+  }, []);
 
-    if (selectedId === id) {
-      const next = tasks.find((task) => task.id !== id);
+  function resetForm() {
+    setTitle("");
+    setDescription("");
+    setDueDate("");
+    setPriority("medium");
+  }
 
-      if (next) {
-        setSelectedId(next.id);
-      }
+  async function addTask() {
+    if (!title.trim() || adding) return;
+
+    setAdding(true);
+
+    const { error } = await supabase.from("tasks").insert({
+      title: title.trim(),
+      description: description.trim() || null,
+      due_date: dueDate || null,
+      priority,
+      status: "pending",
+    });
+
+    if (!error) {
+      resetForm();
+      setShowAdd(false);
+      await loadTasks();
+    } else {
+      console.error(error);
+      alert("ثبت وظیفه با خطا مواجه شد.");
+    }
+
+    setAdding(false);
+  }
+
+  async function toggleTask(task: Task) {
+    const completed = task.status === "completed";
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        status: completed ? "pending" : "completed",
+        completed_at: completed
+          ? null
+          : new Date().toISOString(),
+      })
+      .eq("id", task.id);
+
+    if (!error) {
+      await loadTasks();
     }
   }
 
+  async function deleteTask(id: string) {
+    const task = tasks.find((item) => item.id === id);
+
+    if (!task) return;
+
+    const confirmed = window.confirm(
+      `وظیفه «${task.title}» حذف شود؟`
+    );
+
+    if (!confirmed) return;
+
+    await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id);
+
+    await loadTasks();
+  }
+
+  function getPriorityLabel(value: string | null) {
+    return (
+      priorities.find(
+        (item) => item.value === value
+      )?.label || "متوسط"
+    );
+  }
+
+  function getPriorityClass(value: string | null) {
+    if (value === "urgent") return "task-priority-urgent";
+    if (value === "high") return "task-priority-high";
+    if (value === "low") return "task-priority-low";
+    return "task-priority-medium";
+  }
+
+  function isOverdue(task: Task) {
+    if (!task.due_date) return false;
+    if (task.status === "completed") return false;
+
+    const today = new Date();
+    const due = new Date(task.due_date);
+
+    today.setHours(0, 0, 0, 0);
+    due.setHours(0, 0, 0, 0);
+
+    return due.getTime() < today.getTime();
+  }
+
+  function formatDate(date: string | null) {
+    if (!date) return "بدون موعد";
+
+    return new Date(date).toLocaleDateString("fa-IR");
+  }
+
+  const completedCount = useMemo(
+    () =>
+      tasks.filter(
+        (task) => task.status === "completed"
+      ).length,
+    [tasks]
+  );
+
+  const pendingCount = useMemo(
+    () =>
+      tasks.filter(
+        (task) => task.status !== "completed"
+      ).length,
+    [tasks]
+  );
+
+  const overdueCount = useMemo(
+    () => tasks.filter(isOverdue).length,
+    [tasks]
+  );
+
   return (
-    <main className="tasks-page">
-      <header className="tasks-header">
+    <main className="page-container">
+      <div className="page-header">
         <div>
-          <span className="dashboard-label">
-            TASK MANAGER
-          </span>
+          <div className="page-kicker">
+            مدیریت کارها
+          </div>
 
           <h1>وظایف</h1>
 
-          <p>
-            مدیریت کارهای مطالعه، برنامه‌ها و وظایف روزانه
+          <p className="page-subtitle">
+            کارهای درسی و شخصی را ثبت، اولویت‌بندی و پیگیری
+            کن.
           </p>
         </div>
 
-        <button onClick={addTask}>
-          + افزودن وظیفه
+        <button
+          className="primary-button"
+          onClick={() => setShowAdd(true)}
+        >
+          <Plus size={18} />
+          افزودن وظیفه
         </button>
-      </header>
+      </div>
 
-      <section className="task-stats">
-        <div className="panel task-stat">
-          <span>کل وظایف</span>
-          <strong>{tasks.length}</strong>
-          <small>وظیفه ثبت‌شده</small>
-        </div>
-
-        <div className="panel task-stat">
-          <span>انجام‌شده</span>
-          <strong>{completedCount}</strong>
-          <small>وظایف تکمیل‌شده</small>
-        </div>
-
-        <div className="panel task-stat">
-          <span>در حال انجام</span>
-          <strong>{doingCount}</strong>
-          <small>وظایف فعال</small>
-        </div>
-
-        <div className="panel task-stat">
-          <span>زمان برنامه‌ریزی‌شده</span>
-          <strong>{totalMinutes}</strong>
-          <small>دقیقه</small>
-        </div>
-      </section>
-
-      <section className="tasks-toolbar panel">
-        <div className="task-search">
-          <span>⌕</span>
-
-          <input
-            value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
-            placeholder="جستجوی وظیفه یا درس..."
-          />
-        </div>
-
-        <div className="task-filter-group">
-          <span>وضعیت:</span>
-
-          <button
-            className={
-              statusFilter === "all" ? "active" : ""
-            }
-            onClick={() => setStatusFilter("all")}
-          >
-            همه
-          </button>
-
-          <button
-            className={
-              statusFilter === "todo" ? "active" : ""
-            }
-            onClick={() => setStatusFilter("todo")}
-          >
-            انجام‌نشده
-          </button>
-
-          <button
-            className={
-              statusFilter === "doing" ? "active" : ""
-            }
-            onClick={() => setStatusFilter("doing")}
-          >
-            در حال انجام
-          </button>
-
-          <button
-            className={
-              statusFilter === "done" ? "active" : ""
-            }
-            onClick={() => setStatusFilter("done")}
-          >
-            انجام‌شده
-          </button>
-        </div>
-
-        <div className="task-filter-group">
-          <span>اولویت:</span>
-
-          <button
-            className={
-              priorityFilter === "all" ? "active" : ""
-            }
-            onClick={() => setPriorityFilter("all")}
-          >
-            همه
-          </button>
-
-          <button
-            className={
-              priorityFilter === "high" ? "active" : ""
-            }
-            onClick={() => setPriorityFilter("high")}
-          >
-            بالا
-          </button>
-
-          <button
-            className={
-              priorityFilter === "medium" ? "active" : ""
-            }
-            onClick={() => setPriorityFilter("medium")}
-          >
-            متوسط
-          </button>
-
-          <button
-            className={
-              priorityFilter === "low" ? "active" : ""
-            }
-            onClick={() => setPriorityFilter("low")}
-          >
-            کم
-          </button>
-        </div>
-      </section>
-
-      <section className="tasks-layout">
-        <div className="panel tasks-list-panel">
-          <div className="panel-header">
-            <div>
-              <h2>فهرست وظایف</h2>
-
-              <p>
-                {filteredTasks.length} وظیفه نمایش داده می‌شود
-              </p>
-            </div>
+      <section className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <ListTodo size={21} />
           </div>
 
-          <div className="tasks-list">
-            {filteredTasks.map((task) => (
-              <div
+          <div>
+            <span>کل وظایف</span>
+            <strong>{tasks.length}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Clock3 size={21} />
+          </div>
+
+          <div>
+            <span>در انتظار انجام</span>
+            <strong>{pendingCount}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Check size={21} />
+          </div>
+
+          <div>
+            <span>انجام‌شده</span>
+            <strong>{completedCount}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <AlertCircle size={21} />
+          </div>
+
+          <div>
+            <span>عقب‌افتاده</span>
+            <strong>{overdueCount}</strong>
+          </div>
+        </div>
+      </section>
+
+      {loading ? (
+        <div className="empty-card">
+          <p>در حال دریافت وظایف...</p>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="empty-card">
+          <ListTodo size={42} />
+
+          <h2>هنوز وظیفه‌ای ثبت نشده</h2>
+
+          <p>
+            اولین کار خودت را اضافه کن تا بتوانی روند
+            انجام آن را پیگیری کنی.
+          </p>
+
+          <button
+            className="primary-button"
+            onClick={() => setShowAdd(true)}
+          >
+            <Plus size={18} />
+            افزودن اولین وظیفه
+          </button>
+        </div>
+      ) : (
+        <section className="task-list">
+          {tasks.map((task) => {
+            const completed =
+              task.status === "completed";
+
+            const overdue = isOverdue(task);
+
+            return (
+              <article
+                className={`task-card ${
+                  completed ? "task-completed" : ""
+                } ${overdue ? "task-overdue" : ""}`}
                 key={task.id}
-                className={`task-list-item ${
-                  selectedTask?.id === task.id
-                    ? "active"
-                    : ""
-                } ${
-                  task.status === "done"
-                    ? "completed"
-                    : ""
-                }`}
               >
                 <button
-                  className="task-select-area"
-                  onClick={() => setSelectedId(task.id)}
+                  className={`task-check ${
+                    completed ? "checked" : ""
+                  }`}
+                  onClick={() => toggleTask(task)}
+                  title={
+                    completed
+                      ? "بازگرداندن"
+                      : "انجام شد"
+                  }
                 >
-                  <span
-                    className={`task-check ${
-                      task.status
-                    }`}
-                  >
-                    {task.status === "done"
-                      ? "✓"
-                      : ""}
-                  </span>
-
-                  <div className="task-list-content">
-                    <strong>{task.title}</strong>
-
-                    <span>{task.subject}</span>
-
-                    <small>
-                      {task.date} · {task.time} ·{" "}
-                      {task.duration} دقیقه
-                    </small>
-                  </div>
+                  {completed && <Check size={17} />}
                 </button>
 
-                <div className="task-list-actions">
-                  <span
-                    className={`priority-badge ${task.priority}`}
-                  >
-                    {priorityLabels[task.priority]}
-                  </span>
+                <div className="task-content">
+                  <div className="task-title-row">
+                    <h2>{task.title}</h2>
 
-                  <select
-                    value={task.status}
-                    onChange={(event) =>
-                      updateStatus(
-                        task.id,
-                        event.target.value as TaskStatus
-                      )
-                    }
-                  >
-                    <option value="todo">
-                      انجام‌نشده
-                    </option>
+                    <span
+                      className={`task-priority ${getPriorityClass(
+                        task.priority
+                      )}`}
+                    >
+                      {getPriorityLabel(
+                        task.priority
+                      )}
+                    </span>
+                  </div>
 
-                    <option value="doing">
-                      در حال انجام
-                    </option>
+                  {task.description && (
+                    <p>{task.description}</p>
+                  )}
 
-                    <option value="done">
-                      انجام‌شده
-                    </option>
-                  </select>
+                  <div className="task-meta">
+                    <span>
+                      <Clock3 size={14} />
+                      {formatDate(task.due_date)}
+                    </span>
+
+                    {overdue && (
+                      <span className="overdue-label">
+                        عقب‌افتاده
+                      </span>
+                    )}
+
+                    {completed && (
+                      <span className="completed-label">
+                        انجام‌شده
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
 
-            {filteredTasks.length === 0 && (
-              <div className="task-empty">
-                <span>✓</span>
-
-                <strong>
-                  وظیفه‌ای پیدا نشد
-                </strong>
-
-                <small>
-                  فیلترها را تغییر بده یا یک وظیفه جدید
-                  اضافه کن.
-                </small>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {selectedTask && (
-          <aside className="task-details">
-            <div className="panel task-detail-header">
-              <div>
-                <span
-                  className={`priority-badge ${selectedTask.priority}`}
+                <button
+                  className="icon-button danger"
+                  title="حذف وظیفه"
+                  onClick={() =>
+                    deleteTask(task.id)
+                  }
                 >
-                  اولویت{" "}
-                  {priorityLabels[selectedTask.priority]}
-                </span>
+                  <Trash2 size={17} />
+                </button>
+              </article>
+            );
+          })}
+        </section>
+      )}
 
-                <h2>{selectedTask.title}</h2>
+      {showAdd && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowAdd(false)}
+        >
+          <div
+            className="modal-card"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="modal-header">
+              <div>
+                <h2>افزودن وظیفه</h2>
 
                 <p>
-                  {selectedTask.subject} ·{" "}
-                  {selectedTask.date}
+                  مشخصات کاری که باید انجام شود را وارد کن.
                 </p>
               </div>
 
               <button
-                className="delete-task"
-                onClick={() =>
-                  deleteTask(selectedTask.id)
-                }
+                className="icon-button"
+                onClick={() => setShowAdd(false)}
               >
-                حذف
+                <X size={19} />
               </button>
             </div>
 
-            <div className="panel task-status-card">
-              <div className="panel-header">
-                <div>
-                  <h2>وضعیت وظیفه</h2>
-
-                  <p>
-                    وضعیت فعلی این کار را مشخص کن
-                  </p>
-                </div>
-              </div>
-
-              <div className="task-status-buttons">
-                {(
-                  Object.keys(
-                    statusLabels
-                  ) as TaskStatus[]
-                ).map((status) => (
-                  <button
-                    key={status}
-                    className={
-                      selectedTask.status === status
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      updateStatus(
-                        selectedTask.id,
-                        status
-                      )
-                    }
-                  >
-                    <span>
-                      {status === "done"
-                        ? "✓"
-                        : status === "doing"
-                        ? "◐"
-                        : "○"}
-                    </span>
-
-                    {statusLabels[status]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="task-detail-grid">
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>زمان‌بندی</h2>
-
-                    <p>زمان اختصاص‌یافته</p>
-                  </div>
-                </div>
-
-                <div className="task-info-list">
-                  <div>
-                    <span>تاریخ</span>
-
-                    <strong>
-                      {selectedTask.date}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>ساعت</span>
-
-                    <strong>
-                      {selectedTask.time}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>مدت هدف</span>
-
-                    <strong>
-                      {selectedTask.duration} دقیقه
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <h2>درس و اولویت</h2>
-
-                    <p>اطلاعات اصلی وظیفه</p>
-                  </div>
-                </div>
-
-                <div className="task-info-list">
-                  <div>
-                    <span>درس</span>
-
-                    <strong>
-                      {selectedTask.subject}
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>اولویت</span>
-
-                    <strong>
-                      {priorityLabels[
-                        selectedTask.priority
-                      ]}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="panel task-progress-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>پیشرفت</h2>
-
-                  <p>
-                    وضعیت اجرای این وظیفه
-                  </p>
-                </div>
-
-                <strong>
-                  {selectedTask.status === "done"
-                    ? "۱۰۰٪"
-                    : selectedTask.status === "doing"
-                    ? "۵۰٪"
-                    : "۰٪"}
-                </strong>
-              </div>
-
-              <div className="task-progress">
-                <div
-                  style={{
-                    width:
-                      selectedTask.status === "done"
-                        ? "100%"
-                        : selectedTask.status === "doing"
-                        ? "50%"
-                        : "0%",
-                  }}
+            <div className="form-grid">
+              <label className="form-label full-width">
+                عنوان وظیفه
+                <input
+                  className="form-input"
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(event.target.value)
+                  }
+                  placeholder="مثلاً مطالعه فصل دوم زیست"
+                  autoFocus
                 />
-              </div>
+              </label>
+
+              <label className="form-label">
+                موعد انجام
+                <input
+                  className="form-input"
+                  type="date"
+                  value={dueDate}
+                  onChange={(event) =>
+                    setDueDate(event.target.value)
+                  }
+                />
+              </label>
+
+              <label className="form-label">
+                اولویت
+                <select
+                  className="form-input"
+                  value={priority}
+                  onChange={(event) =>
+                    setPriority(event.target.value)
+                  }
+                >
+                  {priorities.map((item) => (
+                    <option
+                      key={item.value}
+                      value={item.value}
+                    >
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="form-label full-width">
+                توضیحات
+                <textarea
+                  className="form-input form-textarea"
+                  rows={4}
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(
+                      event.target.value
+                    )
+                  }
+                  placeholder="توضیحات یا جزئیات وظیفه..."
+                />
+              </label>
             </div>
 
-            <div className="panel task-note-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>یادداشت</h2>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                onClick={() => setShowAdd(false)}
+              >
+                انصراف
+              </button>
 
-                  <p>
-                    توضیحات و نکات مربوط به وظیفه
-                  </p>
-                </div>
-              </div>
-
-              <textarea
-                defaultValue={selectedTask.notes}
-                rows={5}
-                placeholder="توضیحات این وظیفه..."
-              />
-
-              <button>
-                ذخیره یادداشت
+              <button
+                className="primary-button"
+                disabled={
+                  adding || !title.trim()
+                }
+                onClick={addTask}
+              >
+                {adding
+                  ? "در حال ثبت..."
+                  : "ثبت وظیفه"}
               </button>
             </div>
-
-            {selectedTask.status !== "done" && (
-              <div className="panel overdue-panel">
-                <div>
-                  <strong>
-                    نیاز به جابه‌جایی زمان دارد؟
-                  </strong>
-
-                  <p>
-                    اگر این وظیفه انجام نشد، می‌توانی
-                    زمان جدیدی برای آن تعیین کنی.
-                  </p>
-                </div>
-
-                <button>
-                  پیشنهاد زمان جدید
-                </button>
-              </div>
-            )}
-          </aside>
-        )}
-      </section>
-
-      <section className="panel task-summary">
-        <div>
-          <span>خلاصه وضعیت</span>
-
-          <strong>
-            {completedCount} از {tasks.length} وظیفه
-            انجام شده
-          </strong>
+          </div>
         </div>
-
-        <div className="summary-progress">
-          <div
-            style={{
-              width: `${
-                tasks.length
-                  ? (completedCount / tasks.length) * 100
-                  : 0
-              }%`,
-            }}
-          />
-        </div>
-
-        <small>
-          {todoCount} وظیفه باقی‌مانده · {doingCount} وظیفه
-          در حال انجام
-        </small>
-      </section>
+      )}
     </main>
   );
-}
+            }
